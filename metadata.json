@@ -1,0 +1,6 @@
+{
+  "name": "Warden AI — Roleplay & Creation Platform",
+  "description": "A modern, community-driven AI roleplay and character creation platform featuring multi-scenario character design, extensible 11-category tagging, BYOK multi-provider support, and strict privacy controls.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

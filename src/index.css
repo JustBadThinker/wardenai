@@ -1,0 +1,393 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-display: 'Plus Jakarta Sans', sans-serif;
+    --font-body: 'DM Sans', sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+  }
+
+  body {
+    font-family: var(--font-body);
+    background-color: #0c0e14;
+    color: #e2e8f0;
+    overflow-x: hidden;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+  }
+}
+
+/* Custom minimal scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(150, 150, 150, 0.2);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(150, 150, 150, 0.35);
+}
+
+/* Touch action & mobile tap optimization */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button, a, input, select, textarea {
+  touch-action: manipulation;
+}
+
+/* ── Smooth Fluid Animations ── */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes glowPulse {
+  0%, 100% {
+    box-shadow: 0 0 15px rgba(168, 85, 247, 0.25);
+  }
+  50% {
+    box-shadow: 0 0 25px rgba(168, 85, 247, 0.45);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes modalPop {
+  0% {
+    opacity: 0;
+    transform: scale(0.93) translateY(10px);
+  }
+  70% {
+    opacity: 1;
+    transform: scale(1.01) translateY(0);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes pageEnter {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.995);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes popoverScale {
+  0% {
+    opacity: 0;
+    transform: scale(0.9) translateY(4px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes messageBubble {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes tabIndicatorPulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 0.8;
+  }
+}
+
+/* Utility Animation Classes */
+@keyframes cardCascade {
+  0% {
+    opacity: 0;
+    transform: translateY(14px) scale(0.97);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-card-enter {
+  animation: cardCascade 0.34s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  will-change: transform, opacity;
+}
+
+.animate-page-enter {
+  animation: pageEnter 0.32s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+}
+
+.animate-modal-pop {
+  animation: modalPop 0.26s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+}
+
+.animate-drawer-right {
+  animation: slideInRight 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform;
+}
+
+.animate-popover {
+  animation: popoverScale 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  transform-origin: bottom left;
+  will-change: transform, opacity;
+}
+
+.animate-message {
+  animation: messageBubble 0.24s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-slide-left {
+  animation: slideInLeft 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-slide-up {
+  animation: slideUp 0.24s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-slide-down {
+  animation: slideDown 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-glow {
+  animation: glowPulse 3s infinite ease-in-out;
+}
+
+/* Native fluid press utilities */
+.native-press {
+  transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.15s ease;
+}
+.native-press:active {
+  transform: scale(0.95);
+  opacity: 0.85;
+}
+
+.native-card-press {
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease, border-color 0.2s ease;
+  transform-origin: center;
+}
+.native-card-press:active {
+  transform: scale(0.98);
+}
+
+/* Card Interactive hover feedback */
+.card-hover {
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.card-hover:hover {
+  transform: translateY(-2px);
+}
+
+.card-hover:active {
+  transform: translateY(0px) scale(0.99);
+}
+
+/* Micro-interaction on buttons */
+button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* ── Multi-Theme Engine (Catppuccin, Dracula, AMOLED, Amber, Light, Default) ── */
+:root,
+html[data-theme="default"] {
+  --theme-bg: #0c0e14;
+  --theme-surface: #12151e;
+  --theme-border: #1b1e28;
+  --theme-accent: #9333ea;
+}
+
+/* Catppuccin Mocha */
+html[data-theme="catppuccin"] body,
+html[data-theme="catppuccin"] .bg-\[\#0c0e14\] {
+  background-color: #1e1e2e !important;
+  color: #cdd6f4;
+}
+html[data-theme="catppuccin"] .bg-\[\#12151e\],
+html[data-theme="catppuccin"] .bg-\[\#11141e\],
+html[data-theme="catppuccin"] .bg-\[\#141824\],
+html[data-theme="catppuccin"] .bg-neutral-900 {
+  background-color: #181825 !important;
+}
+html[data-theme="catppuccin"] .border-\[\#1b1e28\],
+html[data-theme="catppuccin"] .border-\[\#1a1d27\],
+html[data-theme="catppuccin"] .border-neutral-800 {
+  border-color: #313244 !important;
+}
+
+/* Dracula */
+html[data-theme="dracula"] body,
+html[data-theme="dracula"] .bg-\[\#0c0e14\] {
+  background-color: #282a36 !important;
+  color: #f8f8f2;
+}
+html[data-theme="dracula"] .bg-\[\#12151e\],
+html[data-theme="dracula"] .bg-\[\#11141e\],
+html[data-theme="dracula"] .bg-\[\#141824\],
+html[data-theme="dracula"] .bg-neutral-900 {
+  background-color: #1e1f29 !important;
+}
+html[data-theme="dracula"] .border-\[\#1b1e28\],
+html[data-theme="dracula"] .border-\[\#1a1d27\],
+html[data-theme="dracula"] .border-neutral-800 {
+  border-color: #44475a !important;
+}
+
+/* AMOLED Pitch Black */
+html[data-theme="amoled"] body,
+html[data-theme="amoled"] .bg-\[\#0c0e14\] {
+  background-color: #000000 !important;
+  color: #f5f5f5;
+}
+html[data-theme="amoled"] .bg-\[\#12151e\],
+html[data-theme="amoled"] .bg-\[\#11141e\],
+html[data-theme="amoled"] .bg-\[\#141824\],
+html[data-theme="amoled"] .bg-neutral-900 {
+  background-color: #070709 !important;
+}
+html[data-theme="amoled"] .border-\[\#1b1e28\],
+html[data-theme="amoled"] .border-\[\#1a1d27\],
+html[data-theme="amoled"] .border-neutral-800 {
+  border-color: #16161d !important;
+}
+
+/* Amber Glow */
+html[data-theme="amber"] body,
+html[data-theme="amber"] .bg-\[\#0c0e14\] {
+  background-color: #14100c !important;
+  color: #fde68a;
+}
+html[data-theme="amber"] .bg-\[\#12151e\],
+html[data-theme="amber"] .bg-\[\#11141e\],
+html[data-theme="amber"] .bg-\[\#141824\],
+html[data-theme="amber"] .bg-neutral-900 {
+  background-color: #1f1812 !important;
+}
+html[data-theme="amber"] .border-\[\#1b1e28\],
+html[data-theme="amber"] .border-\[\#1a1d27\],
+html[data-theme="amber"] .border-neutral-800 {
+  border-color: #36281c !important;
+}
+html[data-theme="amber"] .bg-purple-600 {
+  background-color: #d97706 !important;
+}
+html[data-theme="amber"] .text-purple-400,
+html[data-theme="amber"] .text-purple-300 {
+  color: #fbbf24 !important;
+}
+
+/* Light Theme (Clean Daylight) */
+html[data-theme="light"] {
+  filter: invert(0.92) hue-rotate(180deg);
+}
+html[data-theme="light"] img,
+html[data-theme="light"] video,
+html[data-theme="light"] [style*="background-image"] {
+  filter: invert(1) hue-rotate(180deg);
+}
