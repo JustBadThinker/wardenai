@@ -271,6 +271,15 @@ export default function App() {
     }
   }, [personas]);
 
+  // Reset scroll container to top whenever switching views
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    const mainEl = document.querySelector('main');
+    if (mainEl) {
+      mainEl.scrollTop = 0;
+    }
+  }, [activeView]);
+
   // ── Android / Mobile Hardware Back Button (BUG #3) ────────────────────────
   // Track navigation and modal state in a ref for synchronous, fresh reads in event handlers
   const appNavStateRef = useRef({
@@ -444,6 +453,11 @@ export default function App() {
   const handleSelectCharacter = (char: Character) => {
     setSelectedCharacter(char);
     setActiveView('character-profile');
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    const mainEl = document.querySelector('main');
+    if (mainEl) {
+      mainEl.scrollTop = 0;
+    }
   };
 
   const handleForkCharacter = (char: Character) => {

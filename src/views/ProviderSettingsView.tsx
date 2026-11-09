@@ -204,7 +204,7 @@ export const ProviderSettingsView: React.FC<ProviderSettingsViewProps> = ({
                 options={[
                   { value: 'simulation', label: 'Built-in Roleplay Simulation Engine', description: 'Zero-config local simulation' },
                   { value: 'openrouter', label: 'OpenRouter (Claude, Llama, Mistral)', description: 'Multi-provider AI routing' },
-                  { value: 'gemini', label: 'Google Gemini API', description: 'Google AI Studio direct API' },
+                  { value: 'gemini', label: 'Google Gemini API', description: 'Official Google Gemini Direct API' },
                   { value: 'openai', label: 'OpenAI (GPT-4o, GPT-4o-mini)', description: 'Official direct OpenAI endpoint' },
                   { value: 'anthropic', label: 'Anthropic (Claude Direct)', description: 'Direct Claude models' },
                   { value: 'custom', label: 'Custom OpenAI-Compatible Endpoint', description: 'Self-hosted or reverse proxy' }

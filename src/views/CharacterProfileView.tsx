@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   ChevronLeft,
   MoreVertical,
@@ -184,6 +184,13 @@ export const CharacterProfileView: React.FC<CharacterProfileViewProps> = ({
   const [activeTab, setActiveTab] = useState<ProfileTab>('about');
   const [isFollowing, setIsFollowing] = useState(isFollowingCreator);
   const [showMenu, setShowMenu] = useState(false);
+
+  // Ensure view resets to the top when opening a character
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    const mainEl = document.querySelector('main');
+    if (mainEl) mainEl.scrollTop = 0;
+  }, [character.id]);
   const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string } | null>(null);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [exportFormat, setExportFormat] = useState<'png' | 'ccv2' | 'warden' | 'janitor'>('png');
@@ -688,8 +695,8 @@ export const CharacterProfileView: React.FC<CharacterProfileViewProps> = ({
               </div>
             </div>
 
-            {/* Prominent Action Bar */}
-            <div className="pt-2 flex items-center gap-3">
+            {/* Prominent Action Bar (Shown in content on desktop, sticky bottom bar on mobile) */}
+            <div className="pt-2 hidden sm:flex items-center gap-3">
               <button
                 onClick={handleStartChat}
                 className="flex-1 py-3 px-6 rounded-xl bg-purple-600 hover:bg-purple-500 active:scale-[0.99] text-white font-bold text-sm shadow-xl shadow-purple-600/30 flex items-center justify-center gap-2 transition-all cursor-pointer"

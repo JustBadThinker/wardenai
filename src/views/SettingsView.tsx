@@ -643,7 +643,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   }
                   options={[
                     { value: 'custom', label: 'Custom AI Gateway / Reverse Proxy (OpenAI format)', description: 'Connect your self-hosted or reverse proxy endpoint' },
-                    { value: 'gemini', label: 'Google Gemini API (Official Direct)', description: 'Google AI Studio & Vertex models' },
+                    { value: 'gemini', label: 'Google Gemini API (Official Direct)', description: 'Direct official Google Gemini API' },
                     { value: 'openrouter', label: 'OpenRouter API', description: 'Universal router with multi-model support' },
                     { value: 'simulation', label: 'Simulated Offline Roleplay Engine', description: 'Zero-config local simulation' }
                   ]}
