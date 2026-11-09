@@ -24,7 +24,13 @@ export const MobileBottomBar: React.FC<MobileBottomBarProps> = ({
   const personaName = activePersona?.name || currentUser.displayName;
 
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 h-14 bg-[#0c0e14]/85 backdrop-blur-2xl border-t border-white/10 flex items-center justify-around px-2 select-none shadow-2xl">
+    <nav
+      className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0c0e14]/85 backdrop-blur-2xl border-t border-white/10 flex items-center justify-around px-2 select-none shadow-2xl"
+      style={{
+        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+        height: 'calc(56px + env(safe-area-inset-bottom, 0px))'
+      }}
+    >
       {/* 1. Home */}
       <button
         onClick={() => onNavigate('home')}

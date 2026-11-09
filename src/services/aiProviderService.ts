@@ -609,7 +609,7 @@ class AIProviderService {
                 callbacks.onChunk(fullText);
               }
               if (choice?.finish_reason) finishReason = choice.finish_reason;
-            } catch {}
+            } catch { }
           }
           continue;
         }
@@ -670,7 +670,7 @@ class AIProviderService {
             fullText += deltaContent;
             callbacks.onChunk(fullText);
           }
-        } catch {}
+        } catch { }
       }
     }
 
@@ -762,7 +762,7 @@ class AIProviderService {
             fullText += json.delta.text;
             callbacks.onChunk(fullText);
           }
-        } catch {}
+        } catch { }
       }
     }
 

@@ -51,10 +51,21 @@ export const SlideOverDrawer: React.FC<SlideOverDrawerProps> = ({
       />
 
       {/* Drawer Panel */}
-      <div className="relative w-full max-w-xs sm:max-w-sm bg-[#0c0e14] border-r border-[#1a1d27] h-full flex flex-col justify-between z-10 shadow-2xl overflow-y-auto animate-slide-left">
+      <div
+        className="relative w-full max-w-xs sm:max-w-sm bg-[#0c0e14] border-r border-[#1a1d27] h-full flex flex-col justify-between z-10 shadow-2xl overflow-y-auto animate-slide-left"
+        style={{
+          paddingBottom: 'env(safe-area-inset-bottom, 0px)'
+        }}
+      >
         <div>
           {/* Header */}
-          <div className="h-[52px] px-4 border-b border-[#1a1d27] flex items-center justify-between">
+          <div
+            className="px-4 border-b border-[#1a1d27] flex items-center justify-between"
+            style={{
+              paddingTop: 'env(safe-area-inset-top, 0px)',
+              height: 'calc(52px + env(safe-area-inset-top, 0px))'
+            }}
+          >
             <div
               onClick={() => handleNav('home')}
               className="flex items-center gap-2 cursor-pointer active:scale-95 transition-transform"

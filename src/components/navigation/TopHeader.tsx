@@ -30,7 +30,13 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
   const personaName = activePersona?.name || currentUser.displayName;
 
   return (
-    <header className="sticky top-0 z-30 h-[52px] w-full border-b border-[#1b1e28] bg-[#0c0e14]/95 backdrop-blur-md px-3 sm:px-5 flex items-center justify-between">
+    <header
+      className="sticky top-0 z-30 w-full border-b border-[#1b1e28] bg-[#0c0e14]/95 backdrop-blur-md px-3 sm:px-5 flex items-center justify-between"
+      style={{
+        paddingTop: 'env(safe-area-inset-top, 0px)',
+        height: 'calc(52px + env(safe-area-inset-top, 0px))'
+      }}
+    >
       {/* Left: Mobile Menu Button & Brand */}
       <div className="flex items-center gap-3">
         <button

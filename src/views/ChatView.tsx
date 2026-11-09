@@ -481,6 +481,86 @@ export const ChatView: React.FC<ChatViewProps> = ({
     scrollToBottom(false);
   }, [messages, displayedText]);
 
+  // Track open overlays for hardware back button consumption (BUG #3)
+  const chatOverlaysRef = useRef({
+    characterInfoModal,
+    lightboxImage,
+    isTokenCounterOpen,
+    isAssistMenuOpen,
+    isFormatBarOpen,
+    isPersonaQuickOpen,
+    rightPanel
+  });
+
+  useEffect(() => {
+    chatOverlaysRef.current = {
+      characterInfoModal,
+      lightboxImage,
+      isTokenCounterOpen,
+      isAssistMenuOpen,
+      isFormatBarOpen,
+      isPersonaQuickOpen,
+      rightPanel
+    };
+  });
+
+  useEffect(() => {
+    const handleWardenBack = (e: Event) => {
+      const o = chatOverlaysRef.current;
+      if (o.lightboxImage) {
+        e.preventDefault();
+        setLightboxImage(null);
+        return;
+      }
+      if (o.characterInfoModal.isOpen) {
+        e.preventDefault();
+        setCharacterInfoModal({ isOpen: false, isPersona: false });
+        return;
+      }
+      if (o.isTokenCounterOpen) {
+        e.preventDefault();
+        setIsTokenCounterOpen(false);
+        return;
+      }
+      if (o.isAssistMenuOpen) {
+        e.preventDefault();
+        setIsAssistMenuOpen(false);
+        return;
+      }
+      if (o.isFormatBarOpen) {
+        e.preventDefault();
+        setIsFormatBarOpen(false);
+        return;
+      }
+      if (o.isPersonaQuickOpen) {
+        e.preventDefault();
+        setIsPersonaQuickOpen(false);
+        return;
+      }
+      if (o.rightPanel !== 'hidden') {
+        e.preventDefault();
+        setRightPanel('hidden');
+        return;
+      }
+    };
+
+    window.addEventListener('warden:back', handleWardenBack);
+    return () => window.removeEventListener('warden:back', handleWardenBack);
+  }, []);
+
+  // Visual viewport resize handling for Android virtual keyboard (BUG #14)
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const handleViewportResize = () => {
+      if (vv.height < window.innerHeight * 0.85) {
+        scrollToBottom(false);
+      }
+    };
+    vv.addEventListener('resize', handleViewportResize);
+    return () => vv.removeEventListener('resize', handleViewportResize);
+  }, []);
+
   // Keep state synced if conversation prop updates & automatically load initial greeting if messages empty
   useEffect(() => {
     if (conversation.messages && conversation.messages.length > 0) {
@@ -1554,12 +1634,21 @@ export const ChatView: React.FC<ChatViewProps> = ({
           />
           <div
             className="absolute inset-0 bg-black transition-opacity duration-300"
-            style={{ opacity: (activeBg.darkOverlay ?? 40) / 100 }}
+            style={{
+              opacity: typeof customization.backgroundDim === 'number'
+                ? customization.backgroundDim
+                : (activeBg.darkOverlay !== undefined ? activeBg.darkOverlay / 100 : 0.7)
+            }}
           />
         </div>
 
         {/* Floating Frosted-Glass Top Bar: Always visible on mobile & desktop */}
-        <div className="mx-2.5 mt-2 h-[52px] rounded-2xl border border-white/15 bg-[#0c0e14]/55 backdrop-blur-2xl shadow-[0_8px_32px_rgba(0,0,0,0.45)] px-3 sm:px-4 flex items-center justify-between shrink-0 z-30">
+        <div
+          className="mx-2.5 h-[52px] rounded-2xl border border-white/15 bg-[#0c0e14]/55 backdrop-blur-2xl shadow-[0_8px_32px_rgba(0,0,0,0.45)] px-3 sm:px-4 flex items-center justify-between shrink-0 z-30"
+          style={{
+            marginTop: 'max(8px, env(safe-area-inset-top, 8px))'
+          }}
+        >
           <div className="flex items-center gap-2.5 min-w-0">
             <button
               onClick={onBack}
@@ -1646,7 +1735,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
         <div
           ref={messagesContainerRef}
           onScroll={handleTranscriptScroll}
-          className="flex-1 overflow-y-auto overscroll-contain px-3 sm:px-8 py-4 space-y-4 relative z-10 bg-transparent"
+          className="flex-1 overflow-y-auto overscroll-contain px-3 sm:px-8 pt-3 pb-1 space-y-3.5 relative z-10 bg-transparent"
           style={getFontFamilyStyle()}
         >
           <div className="relative z-10 space-y-4 max-w-4xl mx-auto">
@@ -1680,21 +1769,21 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
                   {/* Message Content & Actions */}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-baseline gap-2">
+                    <div className="flex items-center justify-between gap-1.5 min-w-0">
+                      <div className="flex items-baseline gap-1.5 min-w-0 shrink">
                         <button
                           type="button"
                           onClick={() => setCharacterInfoModal({ isOpen: true, isPersona: isUser })}
-                          className="text-xs sm:text-sm font-bold text-white hover:text-purple-300 transition-colors cursor-pointer text-left"
+                          className="text-xs sm:text-sm font-bold text-white hover:text-purple-300 transition-colors cursor-pointer text-left truncate max-w-[120px] xs:max-w-[160px] sm:max-w-xs"
                           title="Click to view profile card and description"
                         >
                           {senderName}
                         </button>
-                        <span className="text-[10px] text-neutral-500 font-normal">{msg.timestamp}</span>
+                        <span className="text-[10px] text-neutral-500 font-normal shrink-0">{msg.timestamp}</span>
                       </div>
 
                       {/* Action buttons: transparent frosted glass pill */}
-                      <div className="opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity flex items-center gap-0.5 sm:gap-1 bg-[#0c0e14]/60 backdrop-blur-xl px-1.5 py-0.5 rounded-xl border border-white/15 shadow-lg shrink-0">
+                      <div className="opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity flex items-center gap-0.5 sm:gap-1 bg-[#0c0e14]/60 backdrop-blur-xl px-1.5 py-0.5 rounded-xl border border-white/15 shadow-lg shrink-0 mr-0.5 z-10">
                         {/* Allow Regenerate from a user message OR on a character response that follows a user message */}
                         {(isUser || messages.findIndex(m => m.id === msg.id) > 0) && (
                           <button
@@ -1894,7 +1983,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
               </div>
             )}
 
-            <div ref={messagesEndRef} />
+            <div ref={messagesEndRef} className="h-0 m-0 p-0 pointer-events-none" />
           </div>
         </div>
 
@@ -1912,7 +2001,12 @@ export const ChatView: React.FC<ChatViewProps> = ({
         )}
 
         {/* Floating Frosted-Glass Bottom Composer with Format Toolbar & Quick Persona Switcher */}
-        <div className="z-20 shrink-0 px-2.5 pb-2.5 pt-1 bg-transparent">
+        <div
+          className="z-20 shrink-0 px-2.5 pt-1 bg-transparent"
+          style={{
+            paddingBottom: 'max(10px, env(safe-area-inset-bottom, 10px))'
+          }}
+        >
           <div className="max-w-4xl mx-auto relative">
             {/* 1. Floating Blur Formatting Toolbar (Toggled by + button) */}
             {isFormatBarOpen && (
@@ -2064,6 +2158,9 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 rows={1}
                 enterKeyHint="enter"
                 value={inputText}
+                onFocus={() => {
+                  setTimeout(() => scrollToBottom(true), 250);
+                }}
                 onChange={e => {
                   setInputText(e.target.value);
                   const el = e.target;
@@ -3260,8 +3357,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
                       )}
                     </div>
 
-                    {/* Dim Overlay Slider */}
-                    {customization.backgroundImageUrl && (
+                    {/* Dim Overlay Slider (BUG #7) */}
+                    {(customization.backgroundImageUrl || activeBg.imageUrl || true) && (
                       <div className="pt-2 space-y-1">
                         <div className="flex justify-between text-[10px] text-neutral-300">
                           <span>Background Darken Filter</span>

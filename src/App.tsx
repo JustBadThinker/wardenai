@@ -25,6 +25,8 @@ import {
 import { firebaseAuthService, DEMO_ACCOUNTS } from './services/firebaseAuth';
 import { storageService } from './services/storageService';
 import { extractCleanCharacterName } from './services/aiProviderService';
+import { App as CapApp } from '@capacitor/app';
+import { Capacitor } from '@capacitor/core';
 import { TopHeader } from './components/navigation/TopHeader';
 import { Sidebar } from './components/navigation/Sidebar';
 import { MobileBottomBar } from './components/navigation/MobileBottomBar';
@@ -217,57 +219,126 @@ export default function App() {
     }
   }, [personas]);
 
-  // ── Android / Mobile Hardware Back Button ──────────────────────────────────
-  // Push a history entry each time the view changes so the browser has
-  // something to "pop" when the user presses the native back button.
-  // The popstate handler then maps the pop to an in-app back navigation
-  // instead of letting the browser leave the page entirely.
-  const BACK_DESTINATION: Record<string, string> = {
-    chat:               'discover',
-    'character-profile': 'discover',
-    studio:             'discover',
-    chats:              'discover',
-    personas:           'discover',
-    lorebooks:          'discover',
-    'user-profile':     'discover',
-    settings:           'discover',
-    security:           'discover',
-    'provider-settings': 'settings',
-    'security-settings': 'settings',
-    'privacy-security':  'security',
-    moderation:         'discover',
-    investigations:     'discover',
-    'audit-logs':       'discover',
+  // ── Android / Mobile Hardware Back Button (BUG #3) ────────────────────────
+  // Track navigation and modal state in a ref for synchronous, fresh reads in event handlers
+  const appNavStateRef = useRef({
+    activeView,
+    isMobileMenuOpen,
+    isAuthModalOpen,
+    isAgeGateOpen,
+    isGlobalImportOpen,
+    reportModalChar
+  });
+
+  useEffect(() => {
+    appNavStateRef.current = {
+      activeView,
+      isMobileMenuOpen,
+      isAuthModalOpen,
+      isAgeGateOpen,
+      isGlobalImportOpen,
+      reportModalChar
+    };
+  }, [activeView, isMobileMenuOpen, isAuthModalOpen, isAgeGateOpen, isGlobalImportOpen, reportModalChar]);
+
+  // Master Back Button Handler: Hierarchical priority
+  const executeAppBackButton = () => {
+    // 1. Dispatch custom event so child views (e.g. ChatView modal/lightbox/panel) can consume first
+    const customBackEvent = new CustomEvent('warden:back', { cancelable: true });
+    window.dispatchEvent(customBackEvent);
+    if (customBackEvent.defaultPrevented) {
+      return;
+    }
+
+    const {
+      activeView: currentView,
+      isMobileMenuOpen: menuOpen,
+      isAuthModalOpen: authOpen,
+      isAgeGateOpen: ageOpen,
+      isGlobalImportOpen: importOpen,
+      reportModalChar: reportChar
+    } = appNavStateRef.current;
+
+    // 2. Dismiss open top-level modals
+    if (menuOpen) {
+      setIsMobileMenuOpen(false);
+      return;
+    }
+    if (authOpen) {
+      setIsAuthModalOpen(false);
+      return;
+    }
+    if (ageOpen) {
+      setIsAgeGateOpen(false);
+      return;
+    }
+    if (importOpen) {
+      setIsGlobalImportOpen(false);
+      return;
+    }
+    if (reportChar) {
+      setReportModalChar(null);
+      return;
+    }
+
+    // 3. Hierarchical sub-views back to their parent views
+    if (currentView === 'chat') {
+      setActiveView(conversations.length > 0 ? 'chats' : 'discover');
+      return;
+    }
+    if (currentView === 'character-profile' || currentView === 'studio') {
+      setActiveView('discover');
+      return;
+    }
+    if (currentView === 'provider-settings' || currentView === 'security-settings') {
+      setActiveView('settings');
+      return;
+    }
+    if (currentView === 'privacy-security') {
+      setActiveView('security-settings');
+      return;
+    }
+    if (currentView !== 'home') {
+      setActiveView('home');
+      return;
+    }
+
+    // 4. At 'home' root: exit application on native Capacitor Android
+    if (Capacitor.isNativePlatform()) {
+      CapApp.exitApp();
+    }
   };
 
   useEffect(() => {
-    // Seed the initial history entry so the very first back press
-    // hits our handler rather than leaving the app immediately.
+    // Capacitor native hardware back button listener
+    let removeListener: (() => void) | null = null;
+    try {
+      CapApp.addListener('backButton', () => {
+        executeAppBackButton();
+      }).then(handle => {
+        removeListener = () => handle.remove();
+      });
+    } catch {}
+
+    // Web browser popstate synchronization
     window.history.replaceState({ view: activeView }, '');
+    const handlePopState = (e: PopStateEvent) => {
+      e.preventDefault();
+      window.history.pushState({ view: appNavStateRef.current.activeView }, '');
+      executeAppBackButton();
+    };
+    window.addEventListener('popstate', handlePopState);
+
+    return () => {
+      if (removeListener) removeListener();
+      window.removeEventListener('popstate', handlePopState);
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    // Every in-app navigation pushes a new entry so the back button
-    // has a step to pop back to.
+    // Keep browser history stack ready for hardware back pops
     window.history.pushState({ view: activeView }, '');
   }, [activeView]);
-
-  useEffect(() => {
-    const handlePopState = (e: PopStateEvent) => {
-      // Prevent the browser from actually navigating away.
-      e.preventDefault();
-
-      const poppedView: string = e.state?.view ?? 'discover';
-      const dest = BACK_DESTINATION[poppedView] ?? 'discover';
-
-      // Replace so we don't stack duplicate entries on fast back-taps.
-      window.history.replaceState({ view: dest }, '');
-      setActiveView(dest);
-    };
-
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // ──────────────────────────────────────────────────────────────────────────
 
   // Handle Content Rating change with Age-Gate check
@@ -650,7 +721,7 @@ export default function App() {
         />
 
         {/* Main Content Area */}
-        <div className={`flex-1 flex flex-col min-w-0 ${activeView === 'chat' ? 'pb-0' : 'pb-[52px] md:pb-0'} h-[100dvh] overflow-hidden`}>
+        <div className={`flex-1 flex flex-col min-w-0 ${activeView === 'chat' ? 'pb-0' : 'pb-[calc(56px+env(safe-area-inset-bottom,0px))] md:pb-0'} h-[100dvh] overflow-hidden`}>
           {activeView !== 'chat' && (
             <TopHeader
               currentUser={currentUser}
