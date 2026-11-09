@@ -112,10 +112,24 @@ export interface Character {
   likeCount: number;
   bookmarkCount: number;
   chatCount: number;
+  ratingAverage?: number;
+  ratingCount?: number;
   lorebookIds?: string[];
   createdAt: string;
   updatedAt: string;
   age?: number;
+}
+
+export interface CharacterReview {
+  id: string;
+  characterId: string;
+  userId: string;
+  username: string;
+  userAvatar: string;
+  rating: number; // 1 to 5
+  comment: string;
+  createdAt: string;
+  updatedAt?: string;
 }
 
 export interface Persona {

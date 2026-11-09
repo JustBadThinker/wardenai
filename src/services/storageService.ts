@@ -6,6 +6,8 @@
 import {
   Character,
   CharacterScenario,
+  CharacterReview,
+  User,
   Persona,
   Lorebook,
   Conversation,
@@ -389,6 +391,49 @@ export const INITIAL_AUDIT_LOGS: AuditLog[] = [
   }
 ];
 
+export const INITIAL_REVIEWS: CharacterReview[] = [
+  {
+    id: 'rev_1',
+    characterId: 'char_kazimir_01',
+    userId: 'user_mod_02',
+    username: 'Marcus Sentinel',
+    userAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
+    rating: 5,
+    comment: 'Incredible atmospheric writing. The vampire lore and dark romantic tone feel deeply immersive with nuanced pacing.',
+    createdAt: '2026-02-14T18:30:00Z'
+  },
+  {
+    id: 'rev_2',
+    characterId: 'char_kazimir_01',
+    userId: 'user_creator_03',
+    username: 'Elena Rostova',
+    userAvatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150',
+    rating: 5,
+    comment: 'The mannerisms and regal dialogue are spot on. One of the best historical gothic characters on Warden.',
+    createdAt: '2026-03-01T12:00:00Z'
+  },
+  {
+    id: 'rev_3',
+    characterId: 'char_zephyr_01',
+    userId: 'user_member_04',
+    username: 'Traveler99',
+    userAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150',
+    rating: 5,
+    comment: 'Zephyr is so wholesome! The sci-fi setting aboard Relay Aurelia feels lonely yet comforting.',
+    createdAt: '2026-03-10T09:15:00Z'
+  },
+  {
+    id: 'rev_4',
+    characterId: 'char_aurelia_01',
+    userId: 'user_member_04',
+    username: 'Traveler99',
+    userAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150',
+    rating: 4,
+    comment: 'Super cute apothecary elf dynamics. The alchemy recipes and botanical details add great flavor.',
+    createdAt: '2026-03-12T14:22:00Z'
+  }
+];
+
 class StorageService {
   private characters: Character[] = [];
   private tags: Tag[] = [];
@@ -399,6 +444,7 @@ class StorageService {
   private reports: ContentReport[] = [];
   private investigations: RestrictedInvestigation[] = [];
   private auditLogs: AuditLog[] = [];
+  private reviews: CharacterReview[] = [];
   private follows: FollowRelationship[] = [
     { id: 'fol_1', followerId: 'user_creator_03', followingId: 'user_admin_01', createdAt: '2025-08-01' },
     { id: 'fol_2', followerId: 'user_mod_02', followingId: 'user_creator_03', createdAt: '2025-08-02' }
@@ -473,6 +519,9 @@ class StorageService {
       this.likedCharacterIds = savedLikes
         ? (JSON.parse(savedLikes) as string[]).filter(id => !LEGACY_DEMO_CHAR_IDS.has(id))
         : [];
+
+      const savedReviews = localStorage.getItem('warden_reviews_v1');
+      this.reviews = savedReviews ? JSON.parse(savedReviews) : INITIAL_REVIEWS;
     } catch (e) {
       console.error('Storage initialization failed, resetting to defaults', e);
       this.characters = INITIAL_CHARACTERS;
@@ -483,6 +532,7 @@ class StorageService {
       this.providers = INITIAL_PROVIDERS;
       this.investigations = INITIAL_INVESTIGATIONS;
       this.auditLogs = INITIAL_AUDIT_LOGS;
+      this.reviews = INITIAL_REVIEWS;
     }
   }
 
@@ -549,6 +599,135 @@ class StorageService {
 
   public saveLikedCharacters() {
     this.safeSetItem('warden_likes_v7', JSON.stringify(this.likedCharacterIds));
+  }
+
+  public saveReviews() {
+    this.safeSetItem('warden_reviews_v1', JSON.stringify(this.reviews));
+  }
+
+  // --- Reviews & Rating Breakdown ---
+  public getCharacterReviews(characterId: string): CharacterReview[] {
+    return this.reviews
+      .filter(r => r.characterId === characterId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
+
+  public getCharacterRatingStats(characterId: string): {
+    average: number;
+    count: number;
+    breakdown: Record<number, number>;
+  } {
+    const charReviews = this.reviews.filter(r => r.characterId === characterId);
+    const count = charReviews.length;
+    const breakdown: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+
+    if (count === 0) {
+      return { average: 5.0, count: 0, breakdown };
+    }
+
+    let sum = 0;
+    for (const r of charReviews) {
+      sum += r.rating;
+      const star = Math.max(1, Math.min(5, Math.round(r.rating)));
+      breakdown[star] = (breakdown[star] || 0) + 1;
+    }
+
+    const average = Math.round((sum / count) * 10) / 10;
+    return { average, count, breakdown };
+  }
+
+  public saveCharacterReview(review: Omit<CharacterReview, 'id' | 'createdAt'>): CharacterReview {
+    const existingIdx = this.reviews.findIndex(
+      r => r.characterId === review.characterId && r.userId === review.userId
+    );
+    let saved: CharacterReview;
+    if (existingIdx >= 0) {
+      saved = {
+        ...this.reviews[existingIdx],
+        ...review,
+        updatedAt: new Date().toISOString()
+      };
+      this.reviews[existingIdx] = saved;
+    } else {
+      saved = {
+        ...review,
+        id: `rev_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      this.reviews.unshift(saved);
+    }
+    this.saveReviews();
+
+    // Cache updated average and count on character
+    const stats = this.getCharacterRatingStats(review.characterId);
+    const char = this.getCharacterById(review.characterId);
+    if (char) {
+      char.ratingAverage = stats.average;
+      char.ratingCount = stats.count;
+      this.upsertCharacter(char);
+    }
+
+    return saved;
+  }
+
+  public deleteCharacterReview(reviewId: string, characterId: string): void {
+    this.reviews = this.reviews.filter(r => r.id !== reviewId);
+    this.saveReviews();
+
+    const stats = this.getCharacterRatingStats(characterId);
+    const char = this.getCharacterById(characterId);
+    if (char) {
+      char.ratingAverage = stats.average;
+      char.ratingCount = stats.count;
+      this.upsertCharacter(char);
+    }
+  }
+
+  // --- Character Duplication / Forking ---
+  public forkCharacter(character: Character, currentUser: User): Character {
+    const newId = `char_fork_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const clonedScenarios = (character.scenarios || []).map((s, idx) => ({
+      ...s,
+      id: `scen_${newId}_${idx}`,
+      characterId: newId,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }));
+
+    const forked: Character = {
+      ...character,
+      id: newId,
+      name: `${character.name} (Copy)`,
+      creatorId: currentUser.id,
+      creatorUsername: currentUser.displayName,
+      creatorAvatar: currentUser.avatarUrl,
+      visibility: 'private',
+      publicationStatus: 'draft',
+      scenarios: clonedScenarios.length > 0 ? clonedScenarios : [
+        {
+          id: `scen_${newId}_0`,
+          characterId: newId,
+          title: 'Initial Encounter',
+          description: character.background?.slice(0, 300) || 'First meeting',
+          openingMessage: character.firstMessage || 'Hello.',
+          scenarioInstructions: 'Roleplay interaction.',
+          displayOrder: 0,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        }
+      ],
+      likeCount: 0,
+      bookmarkCount: 0,
+      chatCount: 0,
+      ratingAverage: undefined,
+      ratingCount: 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    this.upsertCharacter(forked);
+    return forked;
   }
 
   // --- Characters & Scenarios ---

@@ -25,15 +25,26 @@ import {
   Download,
   Copy,
   Check,
-  X
+  X,
+  Star,
+  GitFork,
+  Trash2,
+  Loader2,
+  FileText
 } from 'lucide-react';
-import { Character, CharacterScenario, Persona, User as UserModel } from '../types';
+import { Character, CharacterScenario, CharacterReview, Persona, User as UserModel } from '../types';
 import { RichTextRenderer } from '../components/common/RichTextRenderer';
 import { cleanCreatorHandle } from '../services/aiProviderService';
+import { storageService } from '../services/storageService';
 import {
   buildJanitorCreationFields,
   downloadJanitorMarkdown
 } from '../utils/janitorExport';
+import {
+  buildCharacterCardV2,
+  generateSillyTavernPngCard,
+  downloadFile
+} from '../utils/cardExport';
 
 interface CharacterProfileViewProps {
   character: Character;
@@ -49,6 +60,7 @@ interface CharacterProfileViewProps {
   onBack: () => void;
   onOpenReportModal: (character: Character) => void;
   onViewCreatorProfile: (creatorId: string) => void;
+  onForkCharacter?: (character: Character) => void;
 }
 
 type ProfileTab = 'about' | 'scenarios' | 'gallery' | 'lorebook' | 'comments';
@@ -66,16 +78,82 @@ export const CharacterProfileView: React.FC<CharacterProfileViewProps> = ({
   onStartChatWithScenario,
   onBack,
   onOpenReportModal,
-  onViewCreatorProfile
+  onViewCreatorProfile,
+  onForkCharacter
 }) => {
   const [activeTab, setActiveTab] = useState<ProfileTab>('about');
   const [isFollowing, setIsFollowing] = useState(isFollowingCreator);
   const [showMenu, setShowMenu] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [exportFormat, setExportFormat] = useState<'png' | 'ccv2' | 'warden' | 'janitor'>('png');
+  const [isExportingPng, setIsExportingPng] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [selectedScenario, setSelectedScenario] = useState<CharacterScenario | undefined>(
     character.scenarios?.[0]
   );
+
+  // Reviews & Ratings State
+  const [reviews, setReviews] = useState<CharacterReview[]>(() =>
+    storageService.getCharacterReviews(character.id)
+  );
+  const [ratingStats, setRatingStats] = useState(() =>
+    storageService.getCharacterRatingStats(character.id)
+  );
+  const [newRating, setNewRating] = useState<number>(5);
+  const [hoverRating, setHoverRating] = useState<number | null>(null);
+  const [reviewComment, setReviewComment] = useState<string>('');
+  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+
+  const handleSaveReview = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reviewComment.trim()) return;
+    setIsSubmittingReview(true);
+    try {
+      storageService.saveCharacterReview({
+        characterId: character.id,
+        userId: currentUser.id,
+        username: currentUser.displayName,
+        userAvatar: currentUser.avatarUrl,
+        rating: newRating,
+        comment: reviewComment.trim()
+      });
+      setReviews(storageService.getCharacterReviews(character.id));
+      setRatingStats(storageService.getCharacterRatingStats(character.id));
+      setReviewComment('');
+    } finally {
+      setIsSubmittingReview(false);
+    }
+  };
+
+  const handleDeleteReview = (revId: string) => {
+    storageService.deleteCharacterReview(revId, character.id);
+    setReviews(storageService.getCharacterReviews(character.id));
+    setRatingStats(storageService.getCharacterRatingStats(character.id));
+  };
+
+  const handleExportPng = async () => {
+    setIsExportingPng(true);
+    try {
+      const blob = await generateSillyTavernPngCard(character);
+      const cleanName = character.name.replace(/[^a-zA-Z0-9_-]/g, '_');
+      downloadFile(`${cleanName}_card.png`, blob, 'image/png');
+    } catch (err: any) {
+      alert(`PNG Card export failed: ${err.message}`);
+    } finally {
+      setIsExportingPng(false);
+    }
+  };
+
+  const handleExportCCv2Json = () => {
+    const ccv2 = buildCharacterCardV2(character);
+    const cleanName = character.name.replace(/[^a-zA-Z0-9_-]/g, '_');
+    downloadFile(`${cleanName}_v2.json`, JSON.stringify(ccv2, null, 2), 'application/json');
+  };
+
+  const handleExportWardenJson = () => {
+    const cleanName = character.name.replace(/[^a-zA-Z0-9_-]/g, '_');
+    downloadFile(`${cleanName}_warden.json`, JSON.stringify(character, null, 2), 'application/json');
+  };
 
   const janitorFields = buildJanitorCreationFields(character);
 
@@ -148,16 +226,18 @@ export const CharacterProfileView: React.FC<CharacterProfileViewProps> = ({
 
             {showMenu && (
               <div className="absolute right-0 top-11 w-52 bg-[#141722] border border-[#232838] rounded-xl shadow-2xl py-1.5 z-30">
-                <button
-                  onClick={() => {
-                    downloadJanitorMarkdown(character);
-                    setShowMenu(false);
-                  }}
-                  className="w-full px-3 py-2 text-left text-xs text-purple-300 hover:text-white hover:bg-[#1c2232] flex items-center gap-2 cursor-pointer"
-                >
-                  <Download className="w-3.5 h-3.5 text-purple-400" />
-                  <span>Export Janitor AI (.md)</span>
-                </button>
+                {onForkCharacter && (
+                  <button
+                    onClick={() => {
+                      onForkCharacter(character);
+                      setShowMenu(false);
+                    }}
+                    className="w-full px-3 py-2 text-left text-xs text-purple-300 hover:text-white hover:bg-[#1c2232] flex items-center gap-2 cursor-pointer"
+                  >
+                    <GitFork className="w-3.5 h-3.5 text-purple-400" />
+                    <span>Fork / Duplicate Character</span>
+                  </button>
+                )}
                 <button
                   onClick={() => {
                     setIsExportModalOpen(true);
@@ -165,8 +245,8 @@ export const CharacterProfileView: React.FC<CharacterProfileViewProps> = ({
                   }}
                   className="w-full px-3 py-2 text-left text-xs text-neutral-300 hover:text-white hover:bg-[#1c2232] flex items-center gap-2 cursor-pointer"
                 >
-                  <Copy className="w-3.5 h-3.5 text-purple-400" />
-                  <span>Janitor AI Form Sheet</span>
+                  <Download className="w-3.5 h-3.5 text-purple-400" />
+                  <span>Export Character Card...</span>
                 </button>
                 <button
                   onClick={() => {
@@ -232,15 +312,26 @@ export const CharacterProfileView: React.FC<CharacterProfileViewProps> = ({
             </div>
           </div>
 
-          {/* Action Row: Export .MD + Follow Button + 3-dots */}
+          {/* Action Row: Fork + Export + Follow Button + 3-dots */}
           <div className="flex items-center flex-wrap gap-2 self-start sm:self-end shrink-0">
+            {onForkCharacter && (
+              <button
+                onClick={() => onForkCharacter(character)}
+                className="px-3.5 py-2 rounded-xl bg-purple-600/20 hover:bg-purple-600/35 text-purple-200 border border-purple-500/40 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-sm"
+                title="Fork this character to customize your own copy in Studio"
+              >
+                <GitFork className="w-3.5 h-3.5 text-purple-400" />
+                <span>Fork Card</span>
+              </button>
+            )}
+
             <button
               onClick={() => setIsExportModalOpen(true)}
               className="px-3.5 py-2 rounded-xl bg-[#161926] hover:bg-[#1e2336] text-purple-300 border border-purple-500/30 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
-              title="Export Character as Janitor AI Markdown (.md)"
+              title="Export Character Card (PNG Card, CCv2 JSON, Janitor Markdown)"
             >
               <Download className="w-3.5 h-3.5 text-purple-400" />
-              <span>Export .MD</span>
+              <span>Export</span>
             </button>
 
             <button
@@ -274,10 +365,10 @@ export const CharacterProfileView: React.FC<CharacterProfileViewProps> = ({
         </div>
 
         {/* Stats Row & Bookmark */}
-        <div className="flex items-center gap-5 text-xs text-neutral-400 font-medium pt-1">
+        <div className="flex items-center gap-4 sm:gap-5 text-xs text-neutral-400 font-medium pt-1">
           <button
             onClick={() => onToggleLike(character.id)}
-            className="flex items-center gap-1.5 hover:text-white transition-colors"
+            className="flex items-center gap-1.5 hover:text-white transition-colors cursor-pointer"
           >
             <Heart className="w-4 h-4 text-neutral-400 hover:text-rose-400 hover:fill-rose-400 transition-colors" />
             <span>{formatCount(character.likeCount)}</span>
@@ -289,8 +380,18 @@ export const CharacterProfileView: React.FC<CharacterProfileViewProps> = ({
           </span>
 
           <button
+            onClick={() => setActiveTab('comments')}
+            className="flex items-center gap-1 text-amber-400 hover:text-amber-300 transition-colors font-semibold cursor-pointer"
+            title={`Rated ${ratingStats.average.toFixed(1)} stars by ${ratingStats.count} users (Click to view reviews)`}
+          >
+            <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
+            <span>{ratingStats.average.toFixed(1)}</span>
+            <span className="text-[11px] text-neutral-400 font-normal">({ratingStats.count})</span>
+          </button>
+
+          <button
             onClick={() => onToggleBookmark(character.id)}
-            className="flex items-center gap-1 hover:text-purple-400 transition-colors"
+            className="flex items-center gap-1 hover:text-purple-400 transition-colors cursor-pointer"
             title="Bookmark"
           >
             <Bookmark className={`w-4 h-4 ${isBookmarked ? 'text-purple-400 fill-purple-400' : ''}`} />
@@ -309,7 +410,7 @@ export const CharacterProfileView: React.FC<CharacterProfileViewProps> = ({
           ))}
         </div>
 
-        {/* Navigation Tabs (About, Scenarios, Gallery, Lorebook, Comments) */}
+        {/* Navigation Tabs (About, Scenarios, Gallery, Lorebook, Reviews) */}
         <div
           role="tablist"
           data-horizontal-scroll="true"
@@ -364,13 +465,14 @@ export const CharacterProfileView: React.FC<CharacterProfileViewProps> = ({
 
           <button
             onClick={() => setActiveTab('comments')}
-            className={`pb-3 transition-colors relative cursor-pointer shrink-0 ${
+            className={`pb-3 transition-colors relative cursor-pointer flex items-center gap-1.5 shrink-0 ${
               activeTab === 'comments'
                 ? 'text-white border-b-2 border-purple-500'
                 : 'text-neutral-400 hover:text-neutral-200'
             }`}
           >
-            Comments
+            <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400/20" />
+            <span>Reviews ({ratingStats.count})</span>
           </button>
         </div>
 
@@ -543,15 +645,193 @@ export const CharacterProfileView: React.FC<CharacterProfileViewProps> = ({
           </div>
         )}
 
-        {/* Tab Content: Comments */}
+        {/* Tab Content: Reviews & Ratings */}
         {activeTab === 'comments' && (
-          <div className="p-8 text-center text-xs text-neutral-500 border border-dashed border-[#1b1e28] rounded-xl">
-            Community discussion and user reviews will appear here. Be respectful and follow community guidelines.
+          <div className="space-y-6 animate-fade-in">
+            {/* 1. Rating Summary & Breakdown Card */}
+            <div className="p-4 sm:p-6 bg-[#12151e] border border-[#1b1e28] rounded-2xl shadow-lg">
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-6 items-center">
+                {/* Left: Overall Score */}
+                <div className="sm:col-span-5 flex flex-col items-center justify-center sm:border-r border-[#1e2334] sm:pr-6 text-center">
+                  <div className="text-4xl sm:text-5xl font-black text-white tracking-tight flex items-baseline gap-1">
+                    <span>{ratingStats.average.toFixed(1)}</span>
+                    <span className="text-sm font-semibold text-neutral-400">/ 5.0</span>
+                  </div>
+                  <div className="flex items-center gap-1 my-2">
+                    {[1, 2, 3, 4, 5].map(star => {
+                      const isFull = star <= Math.round(ratingStats.average);
+                      return (
+                        <Star
+                          key={star}
+                          className={`w-4 h-4 ${
+                            isFull ? 'fill-amber-400 text-amber-400' : 'text-neutral-600'
+                          }`}
+                        />
+                      );
+                    })}
+                  </div>
+                  <p className="text-xs text-neutral-400 font-medium">
+                    Based on <strong className="text-white">{ratingStats.count}</strong> community {ratingStats.count === 1 ? 'review' : 'reviews'}
+                  </p>
+                </div>
+
+                {/* Right: 5-Star Breakdown Bars */}
+                <div className="sm:col-span-7 space-y-2">
+                  {[5, 4, 3, 2, 1].map(stars => {
+                    const count = ratingStats.breakdown[stars] || 0;
+                    const pct = ratingStats.count > 0 ? Math.round((count / ratingStats.count) * 100) : 0;
+                    return (
+                      <div key={stars} className="flex items-center gap-2 text-xs">
+                        <span className="w-7 text-neutral-400 font-mono text-right flex items-center justify-end gap-0.5">
+                          <span>{stars}</span>
+                          <Star className="w-3 h-3 text-amber-400/80 fill-amber-400/80 inline" />
+                        </span>
+                        <div className="flex-1 h-2.5 bg-[#1a1e2d] rounded-full overflow-hidden border border-white/5">
+                          <div
+                            className="h-full bg-gradient-to-r from-amber-500 to-purple-500 rounded-full transition-all duration-500"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                        <span className="w-8 text-[11px] text-neutral-400 text-right font-mono">
+                          {count}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* 2. Leave a Review Form */}
+            <div className="p-4 sm:p-5 bg-[#12151e] border border-[#1b1e28] rounded-2xl shadow-md">
+              <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+                <Star className="w-4 h-4 text-purple-400" />
+                <span>Write a Review for {character.name}</span>
+              </h3>
+              <form onSubmit={handleSaveReview} className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-neutral-300 font-medium">Your Rating:</span>
+                  <div className="flex items-center gap-1">
+                    {[1, 2, 3, 4, 5].map(star => {
+                      const active = star <= (hoverRating !== null ? hoverRating : newRating);
+                      return (
+                        <button
+                          key={star}
+                          type="button"
+                          onMouseEnter={() => setHoverRating(star)}
+                          onMouseLeave={() => setHoverRating(null)}
+                          onClick={() => setNewRating(star)}
+                          className="p-1 text-neutral-600 hover:text-amber-400 transition-colors cursor-pointer active:scale-90"
+                          title={`${star} Star${star > 1 ? 's' : ''}`}
+                        >
+                          <Star
+                            className={`w-5 h-5 transition-transform ${
+                              active ? 'fill-amber-400 text-amber-400 scale-110 drop-shadow-[0_0_6px_rgba(251,191,36,0.5)]' : ''
+                            }`}
+                          />
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <span className="text-xs font-mono font-bold text-amber-400">
+                    {hoverRating !== null ? `${hoverRating} Stars` : `${newRating} Stars`}
+                  </span>
+                </div>
+
+                <textarea
+                  value={reviewComment}
+                  onChange={e => setReviewComment(e.target.value)}
+                  rows={3}
+                  placeholder={`Share your thoughts on ${character.name}'s roleplay style, personality fidelity, and dialogue nuance...`}
+                  className="w-full bg-[#0c0e14] border border-[#202536] focus:border-purple-500 rounded-xl p-3 text-xs sm:text-sm text-neutral-100 placeholder-neutral-500 focus:outline-none resize-none leading-relaxed"
+                />
+
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-[11px] text-neutral-500">
+                    Posting as <strong className="text-neutral-300">@{currentUser.displayName}</strong>
+                  </span>
+                  <button
+                    type="submit"
+                    disabled={!reviewComment.trim() || isSubmittingReview}
+                    className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 disabled:opacity-40 text-white text-xs font-bold rounded-xl transition-all shadow-md active:scale-95 cursor-pointer flex items-center gap-1.5"
+                  >
+                    {isSubmittingReview && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                    <span>Submit Review</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            {/* 3. Community Reviews Feed */}
+            <div className="space-y-3">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-neutral-400 px-1">
+                Community Feedback ({reviews.length})
+              </h4>
+              {reviews.length === 0 ? (
+                <div className="p-8 text-center text-xs text-neutral-500 border border-dashed border-[#1b1e28] rounded-xl">
+                  No reviews yet. Be the first to share your roleplay experience with {character.name}!
+                </div>
+              ) : (
+                reviews.map(rev => (
+                  <div
+                    key={rev.id}
+                    className="p-4 bg-[#12151e] border border-[#1b1e28] hover:border-[#262c3e] rounded-xl transition-all space-y-2"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <img
+                          src={rev.userAvatar}
+                          alt={rev.username}
+                          referrerPolicy="no-referrer"
+                          className="w-7 h-7 rounded-full object-cover bg-neutral-800 border border-white/10 shrink-0"
+                        />
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-white truncate">{rev.username}</p>
+                          <p className="text-[10px] text-neutral-500">
+                            {new Date(rev.createdAt).toLocaleDateString(undefined, {
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric'
+                            })}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-0.5">
+                          {[1, 2, 3, 4, 5].map(star => (
+                            <Star
+                              key={star}
+                              className={`w-3 h-3 ${
+                                star <= rev.rating ? 'fill-amber-400 text-amber-400' : 'text-neutral-700'
+                              }`}
+                            />
+                          ))}
+                        </div>
+                        {rev.userId === currentUser.id && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteReview(rev.id)}
+                            className="p-1 text-neutral-500 hover:text-rose-400 transition-colors cursor-pointer"
+                            title="Delete your review"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <p className="text-xs text-neutral-200 leading-relaxed font-sans whitespace-pre-wrap pl-9">
+                      {rev.comment}
+                    </p>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         )}
       </div>
 
-      {/* Janitor AI Export & Form Copy Sheet Modal */}
+      {/* Multi-Format Advanced Export Modal */}
       {isExportModalOpen && (
         <div
           onClick={() => setIsExportModalOpen(false)}
@@ -561,14 +841,15 @@ export const CharacterProfileView: React.FC<CharacterProfileViewProps> = ({
             onClick={e => e.stopPropagation()}
             className="w-full max-w-2xl max-h-[88vh] bg-[#10131d] border border-[#242a3d] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-modal-pop"
           >
+            {/* Modal Header */}
             <div className="px-5 py-4 border-b border-[#1e2334] flex items-center justify-between bg-[#131724]">
               <div>
                 <h3 className="text-base font-bold text-white flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-purple-400" />
-                  <span>Janitor AI Creation Export — {character.name}</span>
+                  <Download className="w-4 h-4 text-purple-400" />
+                  <span>Export Character — {character.name}</span>
                 </h3>
                 <p className="text-[11px] text-neutral-400 mt-0.5">
-                  Download as a `.md` file or copy each field directly into Janitor AI’s character creation boxes.
+                  Export in universal formats: SillyTavern PNG Card, Character Card V2 JSON, or Janitor AI.
                 </p>
               </div>
               <button
@@ -579,95 +860,237 @@ export const CharacterProfileView: React.FC<CharacterProfileViewProps> = ({
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
-              {[
-                {
-                  key: 'name',
-                  title: '1. Character Name',
-                  hint: 'Displayed on the public bot card',
-                  value: janitorFields.characterName
-                },
-                {
-                  key: 'chatName',
-                  title: 'Character Chat Name',
-                  hint: 'The name the bot uses inside roleplay chats',
-                  value: janitorFields.chatName
-                },
-                {
-                  key: 'bio',
-                  title: '2. Character Bio (Public Description & Images)',
-                  hint: 'Supports Markdown/HTML & banners — NOT read by AI',
-                  value: janitorFields.characterBio
-                },
-                {
-                  key: 'personality',
-                  title: '3. Personality (Core AI Definition)',
-                  hint: 'Read by the AI on every message turn',
-                  value: janitorFields.personality
-                },
-                {
-                  key: 'scenario',
-                  title: '4. Scenario (Setting & Context)',
-                  hint: 'Persistent setting anchor for {{char}} and {{user}}',
-                  value: janitorFields.scenario
-                },
-                {
-                  key: 'initialMessage',
-                  title: '5. Initial Message (First Message)',
-                  hint: 'Opening greeting that starts the roleplay',
-                  value: janitorFields.initialMessage
-                },
-                {
-                  key: 'exampleDialogs',
-                  title: '6. Example Dialogs',
-                  hint: '<START> formatted dialogue examples',
-                  value: janitorFields.exampleDialogs
-                }
-              ].map(item => (
-                <div
-                  key={item.key}
-                  className="p-3.5 rounded-xl bg-[#151926] border border-[#23293d] space-y-2"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <div>
-                      <div className="text-xs font-bold text-white">{item.title}</div>
-                      <div className="text-[10px] text-neutral-400">{item.hint}</div>
-                    </div>
-                    <button
-                      onClick={() => handleCopyField(item.key, item.value)}
-                      className="px-2.5 py-1 rounded-lg bg-purple-600/20 hover:bg-purple-600/35 border border-purple-500/40 text-purple-200 text-[11px] font-bold flex items-center gap-1.5 cursor-pointer shrink-0"
-                    >
-                      {copiedField === item.key ? (
-                        <>
-                          <Check className="w-3 h-3 text-emerald-400" />
-                          <span className="text-emerald-300">Copied!</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="w-3 h-3" />
-                          <span>Copy Box</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-                  <pre className="p-2.5 rounded-lg bg-[#0c0e14] border border-[#1c2132] text-[11px] text-neutral-300 font-mono whitespace-pre-wrap max-h-36 overflow-y-auto">
-                    {item.value}
-                  </pre>
-                </div>
-              ))}
+            {/* Format Switcher Tabs */}
+            <div className="flex border-b border-[#1e2334] bg-[#0c0e14] px-4 pt-2 gap-2 overflow-x-auto">
+              <button
+                type="button"
+                onClick={() => setExportFormat('png')}
+                className={`px-3 py-2 text-xs font-bold rounded-t-xl transition-all cursor-pointer ${
+                  exportFormat === 'png'
+                    ? 'bg-[#151926] text-purple-300 border-t-2 border-purple-500'
+                    : 'text-neutral-400 hover:text-white'
+                }`}
+              >
+                SillyTavern PNG Card
+              </button>
+              <button
+                type="button"
+                onClick={() => setExportFormat('ccv2')}
+                className={`px-3 py-2 text-xs font-bold rounded-t-xl transition-all cursor-pointer ${
+                  exportFormat === 'ccv2'
+                    ? 'bg-[#151926] text-purple-300 border-t-2 border-purple-500'
+                    : 'text-neutral-400 hover:text-white'
+                }`}
+              >
+                CCv2 JSON
+              </button>
+              <button
+                type="button"
+                onClick={() => setExportFormat('warden')}
+                className={`px-3 py-2 text-xs font-bold rounded-t-xl transition-all cursor-pointer ${
+                  exportFormat === 'warden'
+                    ? 'bg-[#151926] text-purple-300 border-t-2 border-purple-500'
+                    : 'text-neutral-400 hover:text-white'
+                }`}
+              >
+                Warden AI Native
+              </button>
+              <button
+                type="button"
+                onClick={() => setExportFormat('janitor')}
+                className={`px-3 py-2 text-xs font-bold rounded-t-xl transition-all cursor-pointer ${
+                  exportFormat === 'janitor'
+                    ? 'bg-[#151926] text-purple-300 border-t-2 border-purple-500'
+                    : 'text-neutral-400 hover:text-white'
+                }`}
+              >
+                Janitor AI (.MD)
+              </button>
             </div>
 
-            <div className="p-4 border-t border-[#1e2334] bg-[#131724] flex items-center justify-between gap-3">
-              <span className="text-[11px] text-neutral-400">
-                Rating: <strong className="text-purple-300">{janitorFields.rating}</strong>
-              </span>
-              <button
-                onClick={() => downloadJanitorMarkdown(character)}
-                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-purple-600/30 cursor-pointer active:scale-95 transition-all"
-              >
-                <Download className="w-4 h-4" />
-                <span>Download Full .MD File</span>
-              </button>
+            {/* Modal Body per Format */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-5">
+              {/* 1. SillyTavern PNG Card Tab */}
+              {exportFormat === 'png' && (
+                <div className="space-y-4">
+                  <div className="p-4 rounded-xl bg-[#151926] border border-[#23293d] flex flex-col sm:flex-row items-center gap-5">
+                    <img
+                      src={character.avatarUrl || character.coverUrl}
+                      alt={character.name}
+                      referrerPolicy="no-referrer"
+                      className="w-32 h-44 object-cover rounded-xl border border-white/15 shadow-xl shrink-0"
+                    />
+                    <div className="space-y-2 text-center sm:text-left">
+                      <h4 className="text-sm font-bold text-white">{character.name}</h4>
+                      <p className="text-xs text-neutral-300 leading-relaxed">
+                        This PNG image contains embedded Character Card V2 JSON metadata in its internal <code className="text-purple-300 bg-black/40 px-1 py-0.5 rounded font-mono">tEXt</code> chunks.
+                      </p>
+                      <p className="text-[11px] text-neutral-400">
+                        Compatible with <strong>SillyTavern, TavernAI, Agnaistic, RisuAI</strong>, and any app that supports standard character card images. Drag & drop the downloaded PNG directly into your client!
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end pt-2">
+                    <button
+                      type="button"
+                      onClick={handleExportPng}
+                      disabled={isExportingPng}
+                      className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-purple-600/30 cursor-pointer active:scale-95 transition-all"
+                    >
+                      {isExportingPng ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                      <span>Download SillyTavern PNG Card</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* 2. CCv2 JSON Tab */}
+              {exportFormat === 'ccv2' && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-neutral-400">Standard Character Card V2 Specification JSON:</span>
+                    <button
+                      type="button"
+                      onClick={() => handleCopyField('ccv2_raw', JSON.stringify(buildCharacterCardV2(character), null, 2))}
+                      className="px-2.5 py-1 rounded-lg bg-purple-600/20 hover:bg-purple-600/35 border border-purple-500/40 text-purple-200 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                    >
+                      {copiedField === 'ccv2_raw' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                      <span>{copiedField === 'ccv2_raw' ? 'Copied!' : 'Copy JSON'}</span>
+                    </button>
+                  </div>
+                  <pre className="p-3 bg-[#0c0e14] border border-[#1e2334] rounded-xl text-[11px] text-neutral-300 font-mono whitespace-pre-wrap max-h-72 overflow-y-auto leading-relaxed">
+                    {JSON.stringify(buildCharacterCardV2(character), null, 2)}
+                  </pre>
+                  <div className="flex justify-end pt-2">
+                    <button
+                      type="button"
+                      onClick={handleExportCCv2Json}
+                      className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-purple-600/30 cursor-pointer active:scale-95 transition-all"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>Download CCv2 .JSON File</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* 3. Warden AI Native Package Tab */}
+              {exportFormat === 'warden' && (
+                <div className="space-y-3">
+                  <div className="p-3 rounded-xl bg-[#151926] border border-[#23293d] text-xs text-neutral-300">
+                    Full Warden AI native format preserving multi-scenario definitions ({character.scenarios?.length || 0} scenarios), attached lorebooks, and custom moderation metadata.
+                  </div>
+                  <pre className="p-3 bg-[#0c0e14] border border-[#1e2334] rounded-xl text-[11px] text-neutral-300 font-mono whitespace-pre-wrap max-h-72 overflow-y-auto leading-relaxed">
+                    {JSON.stringify(character, null, 2)}
+                  </pre>
+                  <div className="flex justify-end pt-2">
+                    <button
+                      type="button"
+                      onClick={handleExportWardenJson}
+                      className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-purple-600/30 cursor-pointer active:scale-95 transition-all"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>Download Warden AI Package</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* 4. Janitor AI Tab */}
+              {exportFormat === 'janitor' && (
+                <div className="space-y-4">
+                  {[
+                    {
+                      key: 'name',
+                      title: '1. Character Name',
+                      hint: 'Displayed on the public bot card',
+                      value: janitorFields.characterName
+                    },
+                    {
+                      key: 'chatName',
+                      title: 'Character Chat Name',
+                      hint: 'The name the bot uses inside roleplay chats',
+                      value: janitorFields.chatName
+                    },
+                    {
+                      key: 'bio',
+                      title: '2. Character Bio (Public Description & Images)',
+                      hint: 'Supports Markdown/HTML & banners — NOT read by AI',
+                      value: janitorFields.characterBio
+                    },
+                    {
+                      key: 'personality',
+                      title: '3. Personality (Core AI Definition)',
+                      hint: 'Read by the AI on every message turn',
+                      value: janitorFields.personality
+                    },
+                    {
+                      key: 'scenario',
+                      title: '4. Scenario (Setting & Context)',
+                      hint: 'Persistent setting anchor for {{char}} and {{user}}',
+                      value: janitorFields.scenario
+                    },
+                    {
+                      key: 'initialMessage',
+                      title: '5. Initial Message (First Message)',
+                      hint: 'Opening greeting that starts the roleplay',
+                      value: janitorFields.initialMessage
+                    },
+                    {
+                      key: 'exampleDialogs',
+                      title: '6. Example Dialogs',
+                      hint: '<START> formatted dialogue examples',
+                      value: janitorFields.exampleDialogs
+                    }
+                  ].map(item => (
+                    <div
+                      key={item.key}
+                      className="p-3.5 rounded-xl bg-[#151926] border border-[#23293d] space-y-2"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <div className="text-xs font-bold text-white">{item.title}</div>
+                          <div className="text-[10px] text-neutral-400">{item.hint}</div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyField(item.key, item.value)}
+                          className="px-2.5 py-1 rounded-lg bg-purple-600/20 hover:bg-purple-600/35 border border-purple-500/40 text-purple-200 text-[11px] font-bold flex items-center gap-1.5 cursor-pointer shrink-0"
+                        >
+                          {copiedField === item.key ? (
+                            <>
+                              <Check className="w-3 h-3 text-emerald-400" />
+                              <span className="text-emerald-300">Copied!</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3 h-3" />
+                              <span>Copy Box</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                      <pre className="p-2.5 rounded-lg bg-[#0c0e14] border border-[#1c2132] text-[11px] text-neutral-300 font-mono whitespace-pre-wrap max-h-36 overflow-y-auto">
+                        {item.value}
+                      </pre>
+                    </div>
+                  ))}
+                  <div className="p-4 border-t border-[#1e2334] bg-[#131724] flex items-center justify-between gap-3 rounded-xl mt-4">
+                    <span className="text-[11px] text-neutral-400">
+                      Rating: <strong className="text-purple-300">{janitorFields.rating}</strong>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => downloadJanitorMarkdown(character)}
+                      className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-purple-600/30 cursor-pointer active:scale-95 transition-all"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>Download Full .MD File</span>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

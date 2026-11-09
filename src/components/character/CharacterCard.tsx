@@ -10,7 +10,8 @@ import {
   Bookmark,
   Play,
   CheckCircle2,
-  ShieldAlert
+  ShieldAlert,
+  Star
 } from 'lucide-react';
 import { Character } from '../../types';
 
@@ -105,9 +106,17 @@ export const CharacterCard: React.FC<CharacterCardProps> = ({
             <h3 className="text-sm font-semibold text-white group-hover:text-purple-300 transition-colors truncate">
               {character.name}
             </h3>
-            <div className="flex items-center gap-1 text-[11px] text-neutral-400 font-medium">
-              <Heart className="w-3 h-3 text-neutral-500 fill-neutral-500" />
-              <span>{formatCount(character.likeCount)}</span>
+            <div className="flex items-center gap-2 text-[11px] text-neutral-400 font-medium">
+              {character.ratingAverage !== undefined && character.ratingAverage > 0 && (
+                <div className="flex items-center gap-0.5 text-amber-400 font-semibold" title={`${character.ratingAverage.toFixed(1)} / 5`}>
+                  <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                  <span>{character.ratingAverage.toFixed(1)}</span>
+                </div>
+              )}
+              <div className="flex items-center gap-1">
+                <Heart className="w-3 h-3 text-neutral-500 fill-neutral-500" />
+                <span>{formatCount(character.likeCount)}</span>
+              </div>
             </div>
           </div>
 
@@ -284,6 +293,13 @@ export const CharacterCard: React.FC<CharacterCardProps> = ({
               <MessageSquare className="w-3.5 h-3.5 text-neutral-400" />
               <span>{character.chatCount || 0}</span>
             </span>
+
+            {character.ratingAverage !== undefined && character.ratingAverage > 0 && (
+              <span className="flex items-center gap-1 text-amber-400 font-semibold" title={`${character.ratingAverage.toFixed(1)} / 5 (${character.ratingCount || 0} reviews)`}>
+                <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                <span>{character.ratingAverage.toFixed(1)}</span>
+              </span>
+            )}
           </div>
 
           {/* Purple circular Play button */}

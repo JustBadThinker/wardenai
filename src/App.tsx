@@ -394,6 +394,13 @@ export default function App() {
     setActiveView('character-profile');
   };
 
+  const handleForkCharacter = (char: Character) => {
+    const forked = storageService.forkCharacter(char, currentUser);
+    setCharacters(storageService.getCharacters());
+    setSelectedCharacter(forked);
+    setActiveView('studio');
+  };
+
   const handleStartChatWithScenario = (
     char: Character,
     scenario?: CharacterScenario,
@@ -818,6 +825,7 @@ export default function App() {
                 onBack={() => setActiveView('discover')}
                 onOpenReportModal={c => handleOpenReportModal(c)}
                 onViewCreatorProfile={handleViewCreatorProfile}
+                onForkCharacter={handleForkCharacter}
               />
             )}
 

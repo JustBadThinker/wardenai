@@ -36,7 +36,10 @@ import {
   Gauge,
   Coins,
   Calculator,
-  TrendingDown
+  TrendingDown,
+  Download,
+  FileText,
+  FileCode
 } from 'lucide-react';
 import {
   Character,
@@ -62,6 +65,12 @@ import { tokenOptimizerService } from '../services/tokenOptimizerService';
 import { tokenPriceService, DEFAULT_USD_TO_IDR_RATE } from '../services/tokenPriceService';
 import { TokenCounterModal } from '../components/common/TokenCounterModal';
 import { RichTextRenderer } from '../components/common/RichTextRenderer';
+import {
+  exportTranscriptMarkdown,
+  exportTranscriptPlainText,
+  exportTranscriptJson,
+  downloadFile
+} from '../utils/cardExport';
 
 interface ChatViewProps {
   conversation: Conversation;
@@ -323,6 +332,11 @@ export const ChatView: React.FC<ChatViewProps> = ({
     setTokenPriceConfig(matched);
   }, [gatewayModel, providerType]);
 
+  // Export Transcript Modal State
+  const [isExportTranscriptOpen, setIsExportTranscriptOpen] = useState(false);
+  const [transcriptFormat, setTranscriptFormat] = useState<'md' | 'txt' | 'json'>('md');
+  const [transcriptCopied, setTranscriptCopied] = useState(false);
+
   const currentPersona = allPersonas.find(p => p.id === activePersonaId) || persona || allPersonas[0];
   const currentProvider: ProviderConfig = {
     ...(allProviders.find(p => p.id === activeProviderId) || allProviders[0]),
@@ -489,6 +503,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
     characterInfoModal,
     lightboxImage,
     isTokenCounterOpen,
+    isExportTranscriptOpen,
     isAssistMenuOpen,
     isFormatBarOpen,
     isPersonaQuickOpen,
@@ -500,6 +515,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
       characterInfoModal,
       lightboxImage,
       isTokenCounterOpen,
+      isExportTranscriptOpen,
       isAssistMenuOpen,
       isFormatBarOpen,
       isPersonaQuickOpen,
@@ -518,6 +534,11 @@ export const ChatView: React.FC<ChatViewProps> = ({
       if (o.characterInfoModal.isOpen) {
         e.preventDefault();
         setCharacterInfoModal({ isOpen: false, isPersona: false });
+        return;
+      }
+      if (o.isExportTranscriptOpen) {
+        e.preventDefault();
+        setIsExportTranscriptOpen(false);
         return;
       }
       if (o.isTokenCounterOpen) {
@@ -2950,6 +2971,15 @@ export const ChatView: React.FC<ChatViewProps> = ({
                     >
                       <span>↳ Continue</span>
                     </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsExportTranscriptOpen(true)}
+                      className="col-span-2 py-2 bg-[#131620] hover:bg-purple-900/30 hover:border-purple-500/40 border border-[#202534] rounded-xl text-xs font-semibold text-neutral-200 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs active:scale-98"
+                    >
+                      <Download className="w-3.5 h-3.5 text-purple-400" />
+                      <span>Export Chat Transcript</span>
+                    </button>
                   </div>
                 </div>
               </div>
@@ -3654,6 +3684,147 @@ export const ChatView: React.FC<ChatViewProps> = ({
         optimizerLevel={currentOptimizerLevel}
         cumulativeUsage={conversation.cumulativeUsage}
       />
+
+      {/* Export Chat Transcript Modal */}
+      {isExportTranscriptOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in">
+          <div
+            className="absolute inset-0"
+            onClick={() => setIsExportTranscriptOpen(false)}
+          />
+          <div className="relative w-full max-w-lg bg-[#0e111a] border border-[#23283a] rounded-2xl p-5 shadow-2xl z-10 flex flex-col space-y-4 max-h-[90vh] overflow-hidden">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-[#1b1f2e]">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-purple-600/20 border border-purple-500/30 flex items-center justify-center">
+                  <Download className="w-5 h-5 text-purple-400" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                    Export Chat Transcript
+                  </h3>
+                  <p className="text-[11px] text-neutral-400">
+                    {character.name} · {messages.length} messages
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsExportTranscriptOpen(false)}
+                className="p-1.5 text-neutral-400 hover:text-white rounded-lg hover:bg-neutral-800 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Format Selector Tabs */}
+            <div className="grid grid-cols-3 gap-2 p-1 bg-[#131622] rounded-xl border border-[#202536]">
+              <button
+                type="button"
+                onClick={() => setTranscriptFormat('md')}
+                className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  transcriptFormat === 'md'
+                    ? 'bg-purple-600 text-white shadow-sm'
+                    : 'text-neutral-400 hover:text-white'
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>Markdown (.md)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setTranscriptFormat('txt')}
+                className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  transcriptFormat === 'txt'
+                    ? 'bg-purple-600 text-white shadow-sm'
+                    : 'text-neutral-400 hover:text-white'
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>Plain Text (.txt)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setTranscriptFormat('json')}
+                className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  transcriptFormat === 'json'
+                    ? 'bg-purple-600 text-white shadow-sm'
+                    : 'text-neutral-400 hover:text-white'
+                }`}
+              >
+                <FileCode className="w-3.5 h-3.5" />
+                <span>JSON (.json)</span>
+              </button>
+            </div>
+
+            {/* Transcript Preview Box */}
+            <div className="flex-1 min-h-[160px] max-h-[260px] overflow-y-auto bg-[#07090e] border border-[#1b1f2e] rounded-xl p-3 font-mono text-[11px] text-neutral-300 leading-relaxed whitespace-pre-wrap select-all">
+              {(() => {
+                const personaName = currentPersona?.name || currentUser.displayName || 'User';
+                if (transcriptFormat === 'md') return exportTranscriptMarkdown(conversation, character, personaName);
+                if (transcriptFormat === 'txt') return exportTranscriptPlainText(conversation, character, personaName);
+                return exportTranscriptJson(conversation, character);
+              })()}
+            </div>
+
+            {/* Modal Actions */}
+            <div className="pt-2 flex items-center justify-between gap-3 border-t border-[#1b1f2e]">
+              <button
+                type="button"
+                onClick={() => {
+                  const personaName = currentPersona?.name || currentUser.displayName || 'User';
+                  let content = '';
+                  if (transcriptFormat === 'md') content = exportTranscriptMarkdown(conversation, character, personaName);
+                  else if (transcriptFormat === 'txt') content = exportTranscriptPlainText(conversation, character, personaName);
+                  else content = exportTranscriptJson(conversation, character);
+                  navigator.clipboard.writeText(content);
+                  setTranscriptCopied(true);
+                  setTimeout(() => setTranscriptCopied(false), 2000);
+                }}
+                className="py-2.5 px-4 rounded-xl bg-[#141824] hover:bg-[#1a2030] text-neutral-300 hover:text-white border border-[#22273a] text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer"
+              >
+                {transcriptCopied ? (
+                  <>
+                    <Check className="w-4 h-4 text-emerald-400" />
+                    <span className="text-emerald-400 font-bold">Copied!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-4 h-4" />
+                    <span>Copy to Clipboard</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const personaName = currentPersona?.name || currentUser.displayName || 'User';
+                  let content = '';
+                  let mime = 'text/plain';
+                  if (transcriptFormat === 'md') {
+                    content = exportTranscriptMarkdown(conversation, character, personaName);
+                    mime = 'text/markdown';
+                  } else if (transcriptFormat === 'txt') {
+                    content = exportTranscriptPlainText(conversation, character, personaName);
+                    mime = 'text/plain';
+                  } else {
+                    content = exportTranscriptJson(conversation, character);
+                    mime = 'application/json';
+                  }
+                  const cleanName = character.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+                  const filename = `${cleanName}_chat_${conversation.id.slice(-6)}.${transcriptFormat}`;
+                  downloadFile(filename, content, mime);
+                }}
+                className="py-2.5 px-5 rounded-xl bg-purple-600 hover:bg-purple-500 active:bg-purple-700 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-purple-600/30 transition-all cursor-pointer"
+              >
+                <Download className="w-4 h-4" />
+                <span>Download .{transcriptFormat.toUpperCase()}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
