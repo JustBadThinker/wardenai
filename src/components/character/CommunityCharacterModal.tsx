@@ -27,6 +27,7 @@ import {
 } from '../../services/communityCatalogService';
 import { RichTextRenderer } from '../common/RichTextRenderer';
 import { cleanCreatorHandle } from '../../services/aiProviderService';
+import { CatPulsingLoader } from '../common/CatPulsingLoader';
 
 interface CommunityCharacterModalProps {
   character: CommunityCharacter | null;
@@ -300,9 +301,8 @@ export const CommunityCharacterModal: React.FC<CommunityCharacterModalProps> = (
         {/* Scrollable Modal Content */}
         <div className="flex-1 overflow-y-auto p-5 space-y-4 text-xs text-neutral-300">
           {loading && (
-            <div className="flex items-center justify-center py-10 gap-2 text-neutral-400">
-              <Loader2 className="w-5 h-5 animate-spin text-purple-400" />
-              <span>Fetching full JanitorAI card specifications...</span>
+            <div className="flex flex-col items-center justify-center py-12 gap-3 text-neutral-400">
+              <CatPulsingLoader size="md" label="Fetching full JanitorAI card specifications..." />
             </div>
           )}
 

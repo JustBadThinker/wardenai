@@ -58,8 +58,8 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
               className="w-full h-full object-contain filter drop-shadow-sm"
             />
           </div>
-          <span className="text-base font-bold tracking-tight text-white flex items-center gap-1">
-            <span className="text-purple-400">W</span>arden AI
+          <span className="text-base font-bold tracking-tight warden-brand-text select-none">
+            Warden Ai
           </span>
         </button>
       </div>

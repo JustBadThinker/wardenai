@@ -65,6 +65,7 @@ import { tokenOptimizerService } from '../services/tokenOptimizerService';
 import { tokenPriceService, DEFAULT_USD_TO_IDR_RATE } from '../services/tokenPriceService';
 import { TokenCounterModal } from '../components/common/TokenCounterModal';
 import { RichTextRenderer } from '../components/common/RichTextRenderer';
+import { CatPulsingLoader } from '../components/common/CatPulsingLoader';
 import {
   exportTranscriptMarkdown,
   exportTranscriptPlainText,
@@ -292,6 +293,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const initialScrollDoneConvId = useRef<string | null>(null);
   const [isScrolledUp, setIsScrolledUp] = useState(false);
 
   // Floating format toolbar & Quick Persona switcher
@@ -474,29 +476,60 @@ export const ChatView: React.FC<ChatViewProps> = ({
   };
 
   // Auto scroll to bottom & track scroll position for floating scroll-down button
-  const scrollToBottom = (force = false) => {
+  const scrollToBottom = useCallback((force = false, smooth = true) => {
     const el = messagesContainerRef.current;
+    const behavior = smooth ? 'smooth' : 'auto';
     if (el) {
       const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-      if (force || distanceFromBottom < 220) {
-        el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+      if (force || distanceFromBottom < 300) {
+        el.scrollTo({ top: el.scrollHeight, behavior });
         if (force) setIsScrolledUp(false);
       }
     } else {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      messagesEndRef.current?.scrollIntoView({ behavior, block: 'end' });
     }
-  };
+  }, []);
 
   const handleTranscriptScroll = () => {
     const el = messagesContainerRef.current;
     if (!el) return;
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    setIsScrolledUp(distanceFromBottom > 150);
+    setIsScrolledUp(distanceFromBottom > 160);
   };
+
+  // Immediate auto-scroll to bottom when chat is first opened or conversation switched
+  useEffect(() => {
+    if (initialScrollDoneConvId.current !== conversation.id) {
+      initialScrollDoneConvId.current = conversation.id;
+      setIsScrolledUp(false);
+
+      const scrollDownImmediate = () => {
+        const el = messagesContainerRef.current;
+        if (el) {
+          el.scrollTop = el.scrollHeight;
+        }
+        messagesEndRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' });
+      };
+
+      // Run immediately without animation so conversation opens right at the last message
+      scrollDownImmediate();
+      const rAF = requestAnimationFrame(scrollDownImmediate);
+      const t1 = setTimeout(scrollDownImmediate, 40);
+      const t2 = setTimeout(scrollDownImmediate, 120);
+      const t3 = setTimeout(scrollDownImmediate, 280);
+
+      return () => {
+        cancelAnimationFrame(rAF);
+        clearTimeout(t1);
+        clearTimeout(t2);
+        clearTimeout(t3);
+      };
+    }
+  }, [conversation.id]);
 
   useEffect(() => {
     scrollToBottom(false);
-  }, [messages, displayedText]);
+  }, [messages.length, displayedText, scrollToBottom]);
 
   // Track open overlays for hardware back button consumption (BUG #3)
   const chatOverlaysRef = useRef({
@@ -2054,9 +2087,14 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
                   {/* Writing Animation: While thinking, smooth pulse indicator; Once thinking done, natural word-by-word reveal */}
                   {isThinking ? (
-                    <div className="flex items-center gap-2 py-1.5 text-neutral-400 text-xs italic">
-                      <span className="w-2 h-2 rounded-full bg-purple-500 animate-ping" />
+                    <div className="flex items-center gap-2.5 py-1.5 text-neutral-300 text-xs italic">
+                      <CatPulsingLoader size="xs" glow={false} />
                       <span>{chatCharName} is contemplating their response...</span>
+                    </div>
+                  ) : (!displayedText && !streamingChunk) ? (
+                    <div className="flex items-center gap-2.5 py-1.5 text-purple-300 text-xs font-mono">
+                      <CatPulsingLoader size="xs" glow={true} />
+                      <span className="animate-pulse">{chatCharName} is formulating dialogue...</span>
                     </div>
                   ) : (
                     <div className={`${fontSizeClass} leading-relaxed whitespace-pre-wrap selection:bg-purple-600/40`}>
@@ -2328,7 +2366,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                         title="AI Writing Assistant (>>)"
                       >
                         {isAssisting ? (
-                          <Loader2 className="w-4 h-4 text-purple-300 animate-spin" />
+                          <CatPulsingLoader size="xs" glow={false} />
                         ) : (
                           <ChevronsRight className="w-4 h-4 text-purple-400" />
                         )}

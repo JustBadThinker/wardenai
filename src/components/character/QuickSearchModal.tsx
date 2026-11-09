@@ -27,6 +27,7 @@ import {
   CommunityCharacter,
   communityCatalogService
 } from '../../services/communityCatalogService';
+import { CatPulsingLoader } from '../common/CatPulsingLoader';
 
 interface QuickSearchModalProps {
   isOpen: boolean;
@@ -318,8 +319,8 @@ export const QuickSearchModal: React.FC<QuickSearchModalProps> = ({
                     <span>Online Community ({communityResults.length})</span>
                   </span>
                   {isLoadingCommunity && (
-                    <span className="flex items-center gap-1 text-[11px] text-purple-400 font-normal lowercase">
-                      <Loader2 className="w-3 h-3 animate-spin" />
+                    <span className="flex items-center gap-1.5 text-[11px] text-purple-400 font-normal lowercase">
+                      <CatPulsingLoader size="xs" glow={false} />
                       searching...
                     </span>
                   )}

@@ -42,6 +42,7 @@ import {
 import { CommunityCharacterCard } from '../components/character/CommunityCharacterCard';
 import { CommunityCharacterModal } from '../components/character/CommunityCharacterModal';
 import { storageService } from '../services/storageService';
+import { CatPulsingLoader } from '../components/common/CatPulsingLoader';
 
 interface DiscoverViewProps {
   characters: Character[];
@@ -1203,8 +1204,8 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                     className="pt-6 pb-14 flex flex-col items-center justify-center gap-2"
                   >
                     {isLoadingMore ? (
-                      <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-[#141824] border border-purple-500/30 text-xs text-purple-300 shadow-lg">
-                        <Loader2 className="w-4 h-4 animate-spin text-purple-400" />
+                      <div className="flex items-center gap-2.5 px-4 py-2 rounded-full bg-[#141824] border border-purple-500/30 text-xs text-purple-300 shadow-lg">
+                        <CatPulsingLoader size="xs" glow={false} />
                         <span>Loading more characters...</span>
                       </div>
                     ) : communityHasMore ? (

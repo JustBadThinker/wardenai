@@ -421,3 +421,13 @@ html[data-theme="light"] video,
 html[data-theme="light"] [style*="background-image"] {
   filter: invert(1) hue-rotate(180deg);
 }
+
+/* Brand Title Theme Adaptation */
+.warden-brand-text {
+  color: #ffffff;
+  transition: color 0.15s ease-in-out;
+}
+html.light .warden-brand-text,
+html[data-theme="light"]:not([style*="filter"]) .warden-brand-text {
+  color: #0f172a !important;
+}

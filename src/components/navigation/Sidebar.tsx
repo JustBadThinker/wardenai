@@ -64,7 +64,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
               className="w-full h-full object-contain filter drop-shadow-sm"
             />
           </div>
-          <span className="text-base font-bold text-white tracking-tight">Warden AI</span>
+          <span className="text-base font-bold tracking-tight warden-brand-text select-none">
+            Warden Ai
+          </span>
         </div>
 
         {/* Primary Navigation List */}

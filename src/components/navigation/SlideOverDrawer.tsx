@@ -86,8 +86,8 @@ export const SlideOverDrawer: React.FC<SlideOverDrawerProps> = ({
                   className="w-full h-full object-contain filter drop-shadow-sm"
                 />
               </div>
-              <span className="text-base font-bold text-white tracking-tight">
-                <span className="text-purple-400">W</span>arden AI
+              <span className="text-base font-bold tracking-tight warden-brand-text select-none">
+                Warden Ai
               </span>
             </div>
 

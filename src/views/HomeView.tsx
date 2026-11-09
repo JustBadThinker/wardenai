@@ -26,6 +26,7 @@ import {
   UserPlus,
   ArrowRight
 } from 'lucide-react';
+import { CatPulsingLoader } from '../components/common/CatPulsingLoader';
 
 interface HomeViewProps {
   characters: Character[];
@@ -445,9 +446,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
       {/* Main Content Grid */}
       {isLoadingCommunity ? (
-        <div className="py-20 flex flex-col items-center justify-center gap-3 text-neutral-400">
-          <Loader2 className="w-8 h-8 text-purple-500 animate-spin" />
-          <p className="text-xs font-medium">Loading {tabHeadingMap[activeTab]}...</p>
+        <div className="py-20 flex flex-col items-center justify-center">
+          <CatPulsingLoader size="lg" label={`Loading ${tabHeadingMap[activeTab]}...`} />
         </div>
       ) : activeTab === 'creators' ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">

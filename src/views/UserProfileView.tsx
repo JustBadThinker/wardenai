@@ -17,12 +17,14 @@ import {
   Check,
   PlusCircle,
   Lock,
-  FileDown
+  FileDown,
+  Camera
 } from 'lucide-react';
 import { Character, User } from '../types';
 import { CharacterCard } from '../components/character/CharacterCard';
 import { RichTextRenderer } from '../components/common/RichTextRenderer';
 import { downloadJanitorMarkdown } from '../utils/janitorExport';
+import { EditProfileModal } from '../components/modals/EditProfileModal';
 
 interface UserProfileViewProps {
   user: User;
@@ -36,6 +38,7 @@ interface UserProfileViewProps {
   onToggleBookmark: (id: string) => void;
   onToggleLike: (id: string) => void;
   onUpdateBio?: (newBio: string) => void;
+  onUpdateProfile?: (updates: Partial<User>) => void;
   onCreateCharacter?: () => void;
 }
 
@@ -51,11 +54,13 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
   onToggleBookmark,
   onToggleLike,
   onUpdateBio,
+  onUpdateProfile,
   onCreateCharacter
 }) => {
   const [isEditingBio, setIsEditingBio] = useState(false);
   const [bioText, setBioText] = useState(user.bio);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
   const isOwner = currentUser.id === user.id;
 
@@ -86,7 +91,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
     <div className="max-w-5xl mx-auto pb-16 px-4 sm:px-6 space-y-6">
       {/* Banner & Profile Info */}
       <div className="relative rounded-2xl overflow-hidden border border-neutral-800 bg-neutral-900">
-        <div className="h-44 sm:h-56 w-full relative bg-neutral-950">
+        <div className="h-44 sm:h-56 w-full relative bg-neutral-950 group">
           <img
             src={user.bannerUrl || 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=1200'}
             alt="Banner"
@@ -94,16 +99,47 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
             className="w-full h-full object-cover opacity-80"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-neutral-900 via-neutral-900/40 to-transparent" />
+          {isOwner && (
+            <button
+              onClick={() => setIsEditModalOpen(true)}
+              className="absolute top-3 right-3 px-3 py-1.5 rounded-xl bg-black/60 hover:bg-black/85 backdrop-blur-md border border-white/20 text-white text-xs font-bold flex items-center gap-1.5 shadow-lg transition-all cursor-pointer active:scale-95 z-10"
+              title="Change banner background"
+            >
+              <Camera className="w-3.5 h-3.5" />
+              <span>Change Banner</span>
+            </button>
+          )}
         </div>
 
         <div className="relative px-5 pb-5 -mt-14 sm:-mt-16 flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4">
           <div className="flex flex-col sm:flex-row items-start sm:items-end gap-4">
-            <img
-              src={user.avatarUrl}
-              alt={user.displayName}
-              referrerPolicy="no-referrer"
-              className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl object-cover ring-4 ring-neutral-900 shadow-xl bg-neutral-950 shrink-0"
-            />
+            <div className="relative group shrink-0">
+              <img
+                src={user.avatarUrl}
+                alt={user.displayName}
+                referrerPolicy="no-referrer"
+                className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl object-cover ring-4 ring-neutral-900 shadow-xl bg-neutral-950"
+              />
+              {isOwner && (
+                <>
+                  <button
+                    onClick={() => setIsEditModalOpen(true)}
+                    className="absolute inset-0 rounded-2xl bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white text-[11px] font-bold transition-opacity cursor-pointer backdrop-blur-[2px]"
+                    title="Change profile avatar"
+                  >
+                    <Camera className="w-5 h-5 mb-0.5" />
+                    <span>Change</span>
+                  </button>
+                  <button
+                    onClick={() => setIsEditModalOpen(true)}
+                    className="absolute -bottom-1 -right-1 sm:hidden p-1.5 rounded-full bg-purple-600 border-2 border-neutral-900 text-white shadow-lg cursor-pointer"
+                    title="Change profile avatar"
+                  >
+                    <Camera className="w-3.5 h-3.5" />
+                  </button>
+                </>
+              )}
+            </div>
             <div className="space-y-1">
               <div className="flex items-center gap-2">
                 <h1 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">
@@ -136,6 +172,16 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
 
           {/* Action Button */}
           <div className="flex items-center gap-2">
+            {isOwner && (
+              <button
+                onClick={() => setIsEditModalOpen(true)}
+                className="px-3.5 py-2 rounded-lg text-xs font-bold bg-[#181d2a] hover:bg-[#202738] border border-purple-500/30 text-purple-300 hover:text-white shadow-sm flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+              >
+                <Edit3 className="w-3.5 h-3.5 text-purple-400" />
+                <span>Edit Profile</span>
+              </button>
+            )}
+
             {isOwner && onCreateCharacter && (
               <button
                 onClick={onCreateCharacter}
@@ -292,6 +338,20 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
           </div>
         )}
       </div>
+
+      {/* Edit Profile & Avatar Modal */}
+      {isOwner && (
+        <EditProfileModal
+          isOpen={isEditModalOpen}
+          onClose={() => setIsEditModalOpen(false)}
+          user={user}
+          onSave={(updates) => {
+            if (onUpdateProfile) {
+              onUpdateProfile(updates);
+            }
+          }}
+        />
+      )}
     </div>
   );
 };

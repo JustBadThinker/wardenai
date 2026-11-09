@@ -1066,6 +1066,10 @@ export default function App() {
                   firebaseAuthService.updateUserProfile({ bio: newBio });
                   setCurrentUser(firebaseAuthService.getCurrentUser());
                 }}
+                onUpdateProfile={updates => {
+                  firebaseAuthService.updateUserProfile(updates);
+                  setCurrentUser(firebaseAuthService.getCurrentUser());
+                }}
               />
             )}
 
@@ -1081,6 +1085,14 @@ export default function App() {
                 isBookmarked={id => storageService.isBookmarked(id)}
                 onToggleBookmark={handleToggleBookmark}
                 onToggleLike={handleToggleLike}
+                onUpdateProfile={updates => {
+                  firebaseAuthService.updateUserProfile(updates);
+                  const updated = firebaseAuthService.getCurrentUser();
+                  setCurrentUser(updated);
+                  if (selectedCreatorProfile.id === updated.id) {
+                    setSelectedCreatorProfile(updated);
+                  }
+                }}
               />
             )}
 
