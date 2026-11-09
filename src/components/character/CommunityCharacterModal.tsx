@@ -4,6 +4,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import {
   X,
   Play,
@@ -107,11 +108,30 @@ export const CommunityCharacterModal: React.FC<CommunityCharacterModalProps> = (
   };
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-2.5 sm:p-6 bg-black/80 backdrop-blur-md animate-fade-in">
-      <div
-        className="relative w-full max-w-3xl max-h-[92dvh] bg-[#10131c] border border-[#1f2433] rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-modal-pop"
-        onClick={e => e.stopPropagation()}
-      >
+    <AnimatePresence>
+      {isOpen && character && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center p-2.5 sm:p-6"
+          onClick={onClose}
+        >
+          {/* Backdrop */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 bg-black/80 backdrop-blur-md"
+          />
+
+          {/* Modal Container */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.94, y: 16 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.94, y: 16 }}
+            transition={{ type: 'spring', damping: 30, stiffness: 380, mass: 0.8 }}
+            className="relative w-full max-w-3xl max-h-[92dvh] bg-[#10131c] border border-[#1f2433] rounded-2xl shadow-2xl overflow-hidden flex flex-col transform-gpu z-10"
+            onClick={e => e.stopPropagation()}
+          >
         {/* Header Artwork & Info Hero (Compact on mobile so buttons and text are immediately visible) */}
         <div className="relative h-36 sm:h-60 w-full bg-[#0c0e14] shrink-0 overflow-hidden">
           <img
@@ -405,9 +425,11 @@ export const CommunityCharacterModal: React.FC<CommunityCharacterModalProps> = (
             <Play className="w-4 h-4 fill-current" />
             <span>Start Roleplay Now</span>
           </button>
-        </div>
+          </div>
+        </motion.div>
       </div>
-    </div>
+    )}
+  </AnimatePresence>
   );
 };
 

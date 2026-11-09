@@ -810,26 +810,36 @@ export default function App() {
             onTouchCancel={handleTouchCancel}
             className={`flex-1 min-h-0 overflow-x-hidden ${activeView === 'chat' || activeView === 'discover' ? 'p-0 overflow-hidden' : 'p-3 sm:p-5 overflow-y-auto'}`}
           >
-            <AnimatePresence mode="wait" initial={false}>
+            <AnimatePresence mode="popLayout" initial={false}>
               <motion.div
                 key={activeView}
                 initial={{
                   opacity: 0,
-                  x: slideDirection !== 0 ? slideDirection * 36 : 0,
-                  y: slideDirection === 0 ? 10 : 0
+                  x: slideDirection !== 0 ? slideDirection * 48 : 0,
+                  scale: slideDirection === 0 ? 0.985 : 1
                 }}
-                animate={{ opacity: 1, x: 0, y: 0 }}
+                animate={{
+                  opacity: 1,
+                  x: 0,
+                  scale: 1
+                }}
                 exit={{
                   opacity: 0,
-                  x: slideDirection !== 0 ? slideDirection * -24 : 0,
-                  y: slideDirection === 0 ? -6 : 0
+                  x: slideDirection !== 0 ? slideDirection * -36 : 0,
+                  scale: slideDirection === 0 ? 0.985 : 1
                 }}
-                transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-                className={
+                transition={{
+                  type: 'spring',
+                  stiffness: 380,
+                  damping: 34,
+                  mass: 0.75
+                }}
+                style={{ willChange: 'transform, opacity' }}
+                className={`transform-gpu ${
                   activeView === 'chat' || activeView === 'discover'
                     ? 'h-full w-full min-h-0 overflow-hidden'
                     : 'min-h-full w-full'
-                }
+                }`}
               >
             {activeView === 'home' && (
               <HomeView

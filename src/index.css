@@ -49,10 +49,33 @@
 /* Touch action & mobile tap optimization */
 * {
   -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
 }
 
 button, a, input, select, textarea {
   touch-action: manipulation;
+}
+
+/* Force hardware GPU acceleration on mobile layers */
+.transform-gpu {
+  transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  perspective: 1000px;
+}
+
+/* Smooth momentum scrolling on mobile touch devices */
+.overflow-y-auto, .overflow-x-auto {
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}
+
+/* Native tactile button press response */
+.native-press {
+  transition: transform 0.14s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.14s ease;
+}
+.native-press:active {
+  transform: scale(0.96);
+  opacity: 0.88;
 }
 
 /* ── Smooth Fluid Animations ── */

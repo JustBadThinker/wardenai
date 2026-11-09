@@ -1,4 +1,5 @@
 import React from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import {
   X,
   Home,
@@ -32,8 +33,6 @@ export const SlideOverDrawer: React.FC<SlideOverDrawerProps> = ({
   activePersona,
   onNavigate
 }) => {
-  if (!isOpen) return null;
-
   const handleNav = (view: string) => {
     onNavigate(view);
     onClose();
@@ -43,21 +42,31 @@ export const SlideOverDrawer: React.FC<SlideOverDrawerProps> = ({
   const personaAvatar = activePersona?.avatarUrl || currentUser.avatarUrl;
 
   return (
-    <div className="fixed inset-0 z-50 flex">
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 bg-black/75 backdrop-blur-sm animate-fade-in"
-        onClick={onClose}
-      />
+    <AnimatePresence>
+      {isOpen && (
+        <div className="fixed inset-0 z-50 flex">
+          {/* Backdrop */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 bg-black/75 backdrop-blur-sm"
+            onClick={onClose}
+          />
 
-      {/* Drawer Panel */}
-      <div
-        className="relative w-full max-w-xs sm:max-w-sm bg-[#0c0e14] border-r border-[#1a1d27] h-full flex flex-col justify-between z-10 shadow-2xl overflow-y-auto animate-slide-left"
-        style={{
-          paddingBottom: 'env(safe-area-inset-bottom, 0px)'
-        }}
-      >
-        <div>
+          {/* Drawer Panel */}
+          <motion.div
+            initial={{ x: '-100%' }}
+            animate={{ x: 0 }}
+            exit={{ x: '-100%' }}
+            transition={{ type: 'spring', damping: 32, stiffness: 350, mass: 0.8 }}
+            className="relative w-full max-w-xs sm:max-w-sm bg-[#0c0e14] border-r border-[#1a1d27] h-full flex flex-col justify-between z-10 shadow-2xl overflow-y-auto transform-gpu"
+            style={{
+              paddingBottom: 'env(safe-area-inset-bottom, 0px)'
+            }}
+          >
+            <div>
           {/* Header */}
           <div
             className="px-4 border-b border-[#1a1d27] flex items-center justify-between"
@@ -204,7 +213,9 @@ export const SlideOverDrawer: React.FC<SlideOverDrawerProps> = ({
             <span>Configure LLM Provider</span>
           </button>
         </div>
-      </div>
+      </motion.div>
     </div>
+  )}
+</AnimatePresence>
   );
 };
