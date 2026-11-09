@@ -765,7 +765,11 @@ export default function App() {
                   y: slideDirection === 0 ? -6 : 0
                 }}
                 transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-                className="h-full w-full min-h-0 overflow-hidden"
+                className={
+                  activeView === 'chat' || activeView === 'discover'
+                    ? 'h-full w-full min-h-0 overflow-hidden'
+                    : 'min-h-full w-full'
+                }
               >
             {activeView === 'home' && (
               <HomeView
