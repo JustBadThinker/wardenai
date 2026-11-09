@@ -33,6 +33,7 @@ import { MobileBottomBar } from './components/navigation/MobileBottomBar';
 import { SlideOverDrawer } from './components/navigation/SlideOverDrawer';
 import { CharacterCard } from './components/character/CharacterCard';
 import { QuickSearchModal } from './components/character/QuickSearchModal';
+import { AppSplashScreen } from './components/common/AppSplashScreen';
 
 // Views
 import { HomeView } from './views/HomeView';
@@ -83,6 +84,7 @@ export default function App() {
   const [slideDirection, setSlideDirection] = useState<number>(0);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
+  const [isAppBooting, setIsAppBooting] = useState(true);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   // Set when the header Search button is tapped; DiscoverView consumes it to focus its search box
   const [pendingSearchFocus, setPendingSearchFocus] = useState(false);
@@ -1305,6 +1307,11 @@ export default function App() {
           window.dispatchEvent(new CustomEvent('warden:scroll-discover-top'));
         }}
       />
+
+      {/* Native App Opening Splash & Boot Sequence */}
+      {isAppBooting && (
+        <AppSplashScreen onComplete={() => setIsAppBooting(false)} duration={950} />
+      )}
     </div>
   );
 }
