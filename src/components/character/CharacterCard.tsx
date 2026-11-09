@@ -14,6 +14,7 @@ import {
   Star
 } from 'lucide-react';
 import { Character } from '../../types';
+import { getHighResImageUrl, getFallbackImageUrl, isDefaultPlaceholderAvatar } from '../../utils/imageUtils';
 
 interface CharacterCardProps {
   character: Character;
@@ -43,21 +44,33 @@ export const CharacterCard: React.FC<CharacterCardProps> = ({
   const shouldBlur = isMature && blurNsfw && !revealed;
 
   // React Hooks must ALWAYS be called unconditionally at top of component (Rule of Hooks)
-  const [imgSrc, setImgSrc] = useState(character.avatarUrl || character.coverUrl || '');
-  const [imgError, setImgError] = useState(false);
+  const rawUrl = character.avatarUrl || character.coverUrl || '';
+  const isPlaceholder = isDefaultPlaceholderAvatar(rawUrl);
+  const [imgSrc, setImgSrc] = useState(
+    isPlaceholder ? '' : getHighResImageUrl(rawUrl)
+  );
+  const [imgError, setImgError] = useState(isPlaceholder);
 
   useEffect(() => {
-    setImgSrc(character.avatarUrl || character.coverUrl || '');
-    setImgError(false);
+    const raw = character.avatarUrl || character.coverUrl || '';
+    const isPh = isDefaultPlaceholderAvatar(raw);
+    if (isPh) {
+      setImgSrc('');
+      setImgError(true);
+    } else {
+      setImgSrc(getHighResImageUrl(raw));
+      setImgError(false);
+    }
   }, [character.avatarUrl, character.coverUrl]);
 
   const handleImgError = () => {
-    if (imgSrc === character.avatarUrl && character.coverUrl && character.coverUrl !== character.avatarUrl) {
-      setImgSrc(character.coverUrl);
-    } else if (imgSrc.includes('card.webp')) {
-      setImgSrc(imgSrc.replace('card.webp', 'thumb.webp'));
-    } else if (imgSrc.includes('thumb.webp')) {
-      setImgSrc(imgSrc.replace('thumb.webp', 'avatar.webp'));
+    if (imgSrc === getHighResImageUrl(character.avatarUrl) && character.coverUrl && character.coverUrl !== character.avatarUrl) {
+      setImgSrc(getHighResImageUrl(character.coverUrl));
+      return;
+    }
+    const fallback = getFallbackImageUrl(imgSrc);
+    if (fallback && fallback !== imgSrc) {
+      setImgSrc(fallback);
     } else {
       setImgError(true);
     }

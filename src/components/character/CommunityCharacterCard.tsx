@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { CommunityCharacter } from '../../services/communityCatalogService';
 import { cleanCreatorHandle } from '../../services/aiProviderService';
+import { getHighResImageUrl, getFallbackImageUrl, isDefaultPlaceholderAvatar } from '../../utils/imageUtils';
 
 interface CommunityCharacterCardProps {
   character: CommunityCharacter;
@@ -45,21 +46,29 @@ export const CommunityCharacterCard: React.FC<CommunityCharacterCardProps> = ({
   onToggleFollowCreator,
   onCreatorClick
 }) => {
-  const [imgSrc, setImgSrc] = useState(character.avatarUrl || '');
-  const [imgError, setImgError] = useState(false);
+  const isPlaceholder = isDefaultPlaceholderAvatar(character.avatarUrl);
+  const [imgSrc, setImgSrc] = useState(
+    isPlaceholder ? '' : getHighResImageUrl(character.avatarUrl || '')
+  );
+  const [imgError, setImgError] = useState(isPlaceholder);
   const [revealed, setRevealed] = useState(false);
   const shouldBlur = character.isNsfw && blurNsfw && !revealed;
 
   useEffect(() => {
-    setImgSrc(character.avatarUrl || '');
-    setImgError(false);
+    const isPh = isDefaultPlaceholderAvatar(character.avatarUrl);
+    if (isPh) {
+      setImgSrc('');
+      setImgError(true);
+    } else {
+      setImgSrc(getHighResImageUrl(character.avatarUrl || ''));
+      setImgError(false);
+    }
   }, [character.avatarUrl]);
 
   const handleImgError = () => {
-    if (imgSrc.includes('card.webp')) {
-      setImgSrc(imgSrc.replace('card.webp', 'thumb.webp'));
-    } else if (imgSrc.includes('thumb.webp')) {
-      setImgSrc(imgSrc.replace('thumb.webp', 'avatar.webp'));
+    const fallback = getFallbackImageUrl(imgSrc);
+    if (fallback && fallback !== imgSrc) {
+      setImgSrc(fallback);
     } else {
       setImgError(true);
     }

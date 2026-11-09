@@ -47,6 +47,7 @@ import {
   generateSillyTavernPngCard,
   downloadFile
 } from '../utils/cardExport';
+import { getHighResImageUrl } from '../utils/imageUtils';
 
 export interface GalleryMediaItem {
   id: string;
@@ -69,7 +70,7 @@ export function extractCharacterGallery(character: Character): GalleryMediaItem[
     source: GalleryMediaItem['source']
   ) => {
     if (!rawUrl) return;
-    const url = rawUrl.trim();
+    const url = getHighResImageUrl(rawUrl.trim());
     if (!url || (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('data:image/'))) return;
     if (seenUrls.has(url)) return;
     seenUrls.add(url);
@@ -305,10 +306,10 @@ export const CharacterProfileView: React.FC<CharacterProfileViewProps> = ({
       {/* Top Banner Image with Back & Actions */}
       <div className="relative w-full h-64 sm:h-80 md:h-96 overflow-hidden bg-[#090b10]">
         <img
-          src={character.coverUrl || character.avatarUrl}
+          src={getHighResImageUrl(character.coverUrl || character.avatarUrl)}
           alt={character.name}
           referrerPolicy="no-referrer"
-          onClick={() => setLightboxImage({ url: character.coverUrl || character.avatarUrl, title: character.name })}
+          onClick={() => setLightboxImage({ url: getHighResImageUrl(character.coverUrl || character.avatarUrl), title: character.name })}
           className="w-full h-full object-cover object-top cursor-pointer hover:scale-105 transition-transform duration-500"
           title="Click to view full HD artwork"
         />

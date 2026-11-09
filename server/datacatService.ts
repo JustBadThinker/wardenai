@@ -48,6 +48,22 @@ function cleanCreatorString(raw?: string): string {
   return clean;
 }
 
+function getHighResImageUrl(url?: string): string {
+  if (!url) return '';
+  const trimmed = url.trim();
+  if (!trimmed) return '';
+  if (trimmed.includes('/thumb.webp')) {
+    return trimmed.replace('/thumb.webp', '/card.webp');
+  }
+  if (trimmed.includes('/avatar.webp') && !trimmed.includes('charhub.io')) {
+    return trimmed.replace('/avatar.webp', '/card.webp');
+  }
+  if (trimmed.includes('charhub.io') && trimmed.includes('/avatar.webp')) {
+    return trimmed.replace('/avatar.webp', '/chara_card_v2.png');
+  }
+  return trimmed;
+}
+
 class DatacatService {
   private deviceToken: string = '';
   private sessionToken: string = '';
@@ -350,12 +366,15 @@ class DatacatService {
         .replace(/\s+/g, ' ')
         .trim();
 
-      const avatar =
+      const candidate =
+        item.avatarVariantUrls?.card ||
+        item.avatarVariantUrls?.hero ||
+        item.avatarVariantUrls?.raw ||
         item.avatarDisplayUrl ||
         item.avatar ||
-        item.avatarVariantUrls?.card ||
-        item.avatarVariantUrls?.thumb ||
         'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=500';
+
+      const avatar = getHighResImageUrl(candidate);
 
       return {
         id: item.characterId || item.id,
@@ -467,12 +486,15 @@ class DatacatService {
       .replace(/\s+/g, ' ')
       .trim();
 
-    const avatar =
-      c.avatarDisplayUrl ||
-      c.avatar ||
+    const candidate =
       c.avatarVariantUrls?.hero ||
       c.avatarVariantUrls?.card ||
+      c.avatarVariantUrls?.raw ||
+      c.avatarDisplayUrl ||
+      c.avatar ||
       'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=500';
+
+    const avatar = getHighResImageUrl(candidate);
 
     const detailObj: CommunityCharacterDetail = {
       id: c.character_id || c.characterId || id,

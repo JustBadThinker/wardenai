@@ -39,7 +39,8 @@ export function getHdImageUrl(url: string): string {
     result = result
       .replace(/[?&]width=\d+/g, '')
       .replace(/[?&]thumb=true/g, '')
-      .replace(/\/thumb\.webp(\?|$)/, '/card.webp$1');
+      .replace(/\/thumb\.webp(\?|$)/, '/card.webp$1')
+      .replace(/\/avatar\.webp(\?|$)/, result.includes('charhub') ? '/chara_card_v2.png$1' : '/card.webp$1');
   }
 
   // Cloudinary: replace w_xxx,h_xxx,c_fill with high-res limit

@@ -30,6 +30,7 @@ import { RichTextRenderer } from '../common/RichTextRenderer';
 import { cleanCreatorHandle } from '../../services/aiProviderService';
 import { CatPulsingLoader } from '../common/CatPulsingLoader';
 import { ImageLightboxModal } from '../common/ImageLightboxModal';
+import { getHighResImageUrl } from '../../utils/imageUtils';
 
 interface CommunityCharacterModalProps {
   character: CommunityCharacter | null;
@@ -202,7 +203,7 @@ export const CommunityCharacterModal: React.FC<CommunityCharacterModalProps> = (
                 title={!shouldBlur ? 'Click to view & download HD artwork' : undefined}
               >
                 <img
-                  src={detail?.avatarUrl || character.avatarUrl}
+                  src={getHighResImageUrl(detail?.avatarUrl || character.avatarUrl)}
                   alt={character.name}
                   referrerPolicy="no-referrer"
                   className={`w-full h-full object-cover object-top transition-transform duration-500 ${
@@ -231,7 +232,7 @@ export const CommunityCharacterModal: React.FC<CommunityCharacterModalProps> = (
                   <button
                     type="button"
                     onClick={() => {
-                      setLightboxImageUrl(detail?.avatarUrl || character.avatarUrl);
+                      setLightboxImageUrl(getHighResImageUrl(detail?.avatarUrl || character.avatarUrl));
                       setLightboxImageTitle(character.name);
                       setIsLightboxOpen(true);
                     }}

@@ -6,6 +6,7 @@
 import { ImportedCardData, CharacterImportService } from './characterImportService';
 import { ContentRating } from '../types';
 import { cleanCreatorHandle, extractCleanCharacterName } from './aiProviderService';
+import { getHighResImageUrl, isDefaultPlaceholderAvatar } from '../utils/imageUtils';
 
 export interface CommunityCharacter {
   id: string;
@@ -63,10 +64,17 @@ export const POPULAR_COMMUNITY_CATEGORIES: CommunityCategory[] = [
 ];
 
 class CommunityCatalogService {
-  private baseUrls = [
-    '', // Relative URL (Vite dev server handles /api/community via plugin)
-    'http://localhost:3001' // Dedicated Express proxy server fallback
-  ];
+  private getBaseUrls(): string[] {
+    const urls: string[] = [''];
+    try {
+      const customProxy = localStorage.getItem('warden_community_proxy_url');
+      if (customProxy && customProxy.trim()) {
+        urls.push(customProxy.trim().replace(/\/+$/, ''));
+      }
+    } catch {}
+    urls.push('http://localhost:3001');
+    return urls;
+  }
 
   private activeBaseUrlIndex = 0;
 
@@ -88,11 +96,12 @@ class CommunityCatalogService {
   >();
 
   private async fetchWithFallback(endpoint: string): Promise<Response> {
+    const baseUrls = this.getBaseUrls();
     const originalIndex = this.activeBaseUrlIndex;
     let attempts = 0;
 
-    while (attempts < this.baseUrls.length) {
-      const base = this.baseUrls[this.activeBaseUrlIndex];
+    while (attempts < baseUrls.length) {
+      const base = baseUrls[this.activeBaseUrlIndex % baseUrls.length];
       const url = `${base}${endpoint}`;
       try {
         const res = await fetch(url, {
@@ -112,7 +121,7 @@ class CommunityCatalogService {
       }
 
       // Cycle to next base URL
-      this.activeBaseUrlIndex = (this.activeBaseUrlIndex + 1) % this.baseUrls.length;
+      this.activeBaseUrlIndex = (this.activeBaseUrlIndex + 1) % baseUrls.length;
       attempts++;
     }
 
@@ -177,20 +186,29 @@ class CommunityCatalogService {
         .replace(/\s+/g, ' ')
         .trim();
 
+      const isCharhub = Boolean(fullPath && !fullPath.startsWith('chub-') && fullPath.includes('/'));
+      const hdCard = isCharhub ? `https://avatars.charhub.io/avatars/${fullPath}/chara_card_v2.png` : '';
+      const rawAvatar = isCharhub ? `https://avatars.charhub.io/avatars/${fullPath}/avatar_raw.webp` : '';
+      const thumbAvatar = isCharhub ? `https://avatars.charhub.io/avatars/${fullPath}/avatar.webp` : '';
+
+      const candidateAvatar =
+        node.max_res_url ||
+        hdCard ||
+        rawAvatar ||
+        node.avatar_url ||
+        node.avatar ||
+        thumbAvatar ||
+        'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=500';
+
+      const avatarUrl = getHighResImageUrl(candidateAvatar);
+
       return {
         id: fullPath,
         characterId: fullPath,
         name: node.name || 'Unnamed Character',
         chatName: node.name || '',
         creatorName: creator,
-        avatarUrl:
-          node.avatar_url ||
-          (fullPath && !fullPath.startsWith('chub-') && fullPath.includes('/')
-            ? `https://avatars.charhub.io/avatars/${fullPath}/avatar.webp`
-            : '') ||
-          node.max_res_url ||
-          node.avatar ||
-          'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=500',
+        avatarUrl,
         shortDescription: rawDesc.slice(0, 220),
         isNsfw: Boolean(node.nsfw_image || (node.topics || []).includes('NSFW')),
         totalTokens: Number(node.nTokens) || 850,
@@ -319,20 +337,29 @@ class CommunityCatalogService {
       const fullPath: string = node?.fullPath || id;
       const creator = cleanCreatorHandle(fullPath.includes('/') ? fullPath.split('/')[0] : node?.creator || 'community');
 
+      const isCharhub = Boolean(fullPath && !fullPath.startsWith('chub-') && fullPath.includes('/'));
+      const hdCard = isCharhub ? `https://avatars.charhub.io/avatars/${fullPath}/chara_card_v2.png` : '';
+      const rawAvatar = isCharhub ? `https://avatars.charhub.io/avatars/${fullPath}/avatar_raw.webp` : '';
+      const thumbAvatar = isCharhub ? `https://avatars.charhub.io/avatars/${fullPath}/avatar.webp` : '';
+
+      const detailCandidate =
+        node?.max_res_url ||
+        hdCard ||
+        rawAvatar ||
+        node?.avatar_url ||
+        node?.avatar ||
+        thumbAvatar ||
+        'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=500';
+
+      const avatarUrl = getHighResImageUrl(detailCandidate);
+
       const detail: CommunityCharacterDetail = {
         id: fullPath,
         characterId: fullPath,
         name: node?.name || def?.name || 'Character',
         chatName: def?.name || node?.name || '',
         creatorName: creator,
-        avatarUrl:
-          node?.avatar_url ||
-          (fullPath && !fullPath.startsWith('chub-') && fullPath.includes('/')
-            ? `https://avatars.charhub.io/avatars/${fullPath}/avatar.webp`
-            : '') ||
-          node?.max_res_url ||
-          node?.avatar ||
-          'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=500',
+        avatarUrl,
         shortDescription: String(node?.tagline || node?.description || '').replace(/<[^>]*>/g, ' ').trim().slice(0, 260),
         isNsfw: Boolean(node?.nsfw_image || (node?.topics || []).includes('NSFW')),
         totalTokens: Number(node?.nTokens) || 850,
@@ -429,7 +456,7 @@ class CommunityCatalogService {
       creatorNotes: `Imported from Datacat / JanitorAI community database. Original creator: @${cleanCreatorHandle(summary.creatorName)}`,
       creatorUsername: cleanCreatorHandle(summary.creatorName),
       tags: tagStrings,
-      avatarUrl: summary.avatarUrl,
+      avatarUrl: getHighResImageUrl(detail?.avatarUrl || summary.avatarUrl),
       contentRating,
       age: 21,
       originalFormat: 'chara_card_v2',
