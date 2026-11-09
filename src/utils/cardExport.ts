@@ -323,3 +323,4 @@ export function downloadFile(filename: string, content: string | Blob, mimeType:
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+

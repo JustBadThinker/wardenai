@@ -88,7 +88,20 @@ export function extractThoughtAndContent(rawText: string, explicitThought?: stri
 
   // 3. If content was purely thinking (no actual dialogue produced before token cutoff)
   if (!content && thought) {
-    content = `*(The character was deep in contemplation when their response was cut short by the token limit. Please increase "Max Output Tokens" or click Regenerate to continue.)*`;
+    // Rescue any draft or narrative that started inside the thought block before cutoff
+    const draftSearch = thought.match(/(?:Let me draft:?|Draft:?|Response:?|Final response:?)\s*(?:\n+---)?\s*\n+([\s\S]+)$/i);
+    if (draftSearch && draftSearch[1] && draftSearch[1].trim()) {
+      content = draftSearch[1].trim();
+      thought = thought.substring(0, draftSearch.index).trim();
+    } else {
+      const narrativeAtEnd = thought.match(/\n\n(\*[A-Z][\s\S]+)$/);
+      if (narrativeAtEnd && narrativeAtEnd[1]) {
+        content = narrativeAtEnd[1].trim();
+        thought = thought.substring(0, narrativeAtEnd.index).trim();
+      } else {
+        content = `*(The character was deep in contemplation when their response was cut short by the token limit. Please increase "Max Output Tokens" or click Regenerate to continue.)*`;
+      }
+    }
   }
 
   return {
@@ -446,6 +459,7 @@ class AIProviderService {
 - Maintain immersion. Never break character or refer to yourself as an AI.
 - IMMEDIATELY begin your response in-character with physical actions or dialogue.
 - NEVER output internal reasoning, chain-of-thought, drafting steps, or meta-commentary (such as "Let me think...", "Plan:", or "Let me draft:") in your final output.
+- For reasoning models (GLM, DeepSeek): Keep any internal deliberation strictly under 200 tokens and dedicate your generation budget to writing vivid roleplay dialogue and narrative.
 - Always refer to the user by their persona name ("${userName}") and yourself as "${chatCharName}". Never output raw placeholders like {{user}}, [[user]], {{char}}, or [[char]].
 - Format physical micro-actions, gestures, tone, and environment in italics (*action*).
 - Put spoken words in double quotes ("spoken dialogue").
@@ -626,6 +640,32 @@ class AIProviderService {
     const configuredTokens = provider.maxTokens || 2048;
     const effectiveMaxTokens = Math.max(1024, configuredTokens);
 
+    const isReasoning = /glm|deepseek|qwq|o1|o3|r1|reason/i.test(provider.defaultModel || '');
+    const isGlm = /glm/i.test(provider.defaultModel || '');
+    const isOpenRouter = provider.providerType === 'openrouter' || endpoint.includes('openrouter.ai');
+
+    const requestPayload: Record<string, any> = {
+      model: provider.defaultModel,
+      messages: formattedMessages,
+      temperature: provider.temperature,
+      top_p: provider.topP,
+      max_tokens: effectiveMaxTokens,
+      stream: true
+    };
+
+    // If using OpenRouter with reasoning models (GLM, DeepSeek-R1, QwQ), bound reasoning tokens
+    // so internal thinking CANNOT exhaust the entire token budget before story generation starts!
+    if (isOpenRouter && isReasoning) {
+      requestPayload.reasoning = {
+        effort: 'low',
+        max_tokens: Math.min(1024, Math.max(256, Math.floor(effectiveMaxTokens / 4)))
+      };
+    } else if (isGlm) {
+      // Zhipu / GLM native API reasoning control
+      requestPayload.thinking = { type: 'enabled' };
+      requestPayload.reasoning_effort = 'low';
+    }
+
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
@@ -634,14 +674,7 @@ class AIProviderService {
         ...(provider.providerType === 'openrouter' ? { 'HTTP-Referer': 'https://warden.ai', 'X-Title': 'Warden AI' } : {}),
         ...(provider.customHeaders || {})
       },
-      body: JSON.stringify({
-        model: provider.defaultModel,
-        messages: formattedMessages,
-        temperature: provider.temperature,
-        top_p: provider.topP,
-        max_tokens: effectiveMaxTokens,
-        stream: true
-      }),
+      body: JSON.stringify(requestPayload),
       signal
     });
 

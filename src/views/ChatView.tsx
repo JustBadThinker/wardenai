@@ -1060,9 +1060,21 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
         let finalMessages: ChatMessage[];
         if (isLastChar) {
+          // If the previous message contained the truncation notice, strip it cleanly before appending
+          const noticePattern = /\*\(The character was deep in contemplation[\s\S]*?\)\*/g;
+          const cleanedPrev = lastMsg.content.replace(noticePattern, '').trim();
+          const targetCleaned = targetText.replace(noticePattern, '').trim();
+
+          let newContent = '';
+          if (cleanedPrev && targetCleaned) {
+            newContent = `${cleanedPrev}\n\n${targetCleaned}`;
+          } else {
+            newContent = targetCleaned || cleanedPrev || targetText;
+          }
+
           const updatedLast: ChatMessage = {
             ...lastMsg,
-            content: `${lastMsg.content.trim()}\n\n${targetText}`,
+            content: newContent,
             thought: parsedTarget.thought || lastMsg.thought
           };
           finalMessages = [...messages.slice(0, lastIdx), updatedLast];
@@ -2942,8 +2954,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
                     <input
                       type="range"
                       min="256"
-                      max="4096"
-                      step="64"
+                      max="8192"
+                      step="128"
                       value={maxTokens}
                       onChange={e => setMaxTokens(parseInt(e.target.value))}
                       className="w-full accent-purple-500 cursor-pointer"

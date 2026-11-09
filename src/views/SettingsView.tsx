@@ -743,9 +743,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   </div>
                   <input
                     type="range"
-                    min="100"
-                    max="2048"
-                    step="50"
+                    min="128"
+                    max="8192"
+                    step="128"
                     value={providerConfig.maxTokens}
                     onChange={e =>
                       setProviderConfig({
