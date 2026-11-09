@@ -63,10 +63,11 @@ button, a, input, select, textarea {
   perspective: 1000px;
 }
 
-/* Smooth momentum scrolling on mobile touch devices */
+/* Smooth momentum scrolling on mobile touch devices (auto ensures 1:1 instantaneous finger tracking) */
 .overflow-y-auto, .overflow-x-auto {
   -webkit-overflow-scrolling: touch;
-  scroll-behavior: smooth;
+  scroll-behavior: auto;
+  overscroll-behavior-y: contain;
 }
 
 /* Native tactile button press response */
@@ -235,8 +236,7 @@ button, a, input, select, textarea {
 }
 
 .animate-card-enter {
-  animation: cardCascade 0.34s cubic-bezier(0.16, 1, 0.3, 1) backwards;
-  will-change: transform, opacity;
+  animation: cardCascade 0.28s cubic-bezier(0.16, 1, 0.3, 1) backwards;
 }
 
 .animate-page-enter {

@@ -90,16 +90,44 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         try {
+            // Unlock high refresh rate (90Hz / 120Hz) on supported Android 11+ screens
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                try {
+                    android.view.Display display = getDisplay();
+                    if (display != null) {
+                        android.view.Display.Mode[] modes = display.getSupportedModes();
+                        android.view.Display.Mode maxMode = null;
+                        float maxRefresh = 60f;
+                        for (android.view.Display.Mode m : modes) {
+                            if (m.getRefreshRate() > maxRefresh) {
+                                maxRefresh = m.getRefreshRate();
+                                maxMode = m;
+                            }
+                        }
+                        if (maxMode != null) {
+                            android.view.WindowManager.LayoutParams lp = getWindow().getAttributes();
+                            lp.preferredDisplayModeId = maxMode.getModeId();
+                            getWindow().setAttributes(lp);
+                        }
+                    }
+                } catch (Exception ignored) {}
+            }
+
             if (this.bridge != null && this.bridge.getWebView() != null) {
-                CookieManager.getInstance().setAcceptThirdPartyCookies(this.bridge.getWebView(), true);
-                WebSettings settings = this.bridge.getWebView().getSettings();
+                android.webkit.WebView webView = this.bridge.getWebView();
+                // Enable hardware GPU acceleration layer & smooth touch overscroll
+                webView.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null);
+                webView.setOverScrollMode(android.view.View.OVER_SCROLL_NEVER);
+
+                CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
+                WebSettings settings = webView.getSettings();
                 settings.setDomStorageEnabled(true);
                 settings.setDatabaseEnabled(true);
                 settings.setJavaScriptCanOpenWindowsAutomatically(true);
                 settings.setSupportMultipleWindows(true);
 
                 // Add native bridge to save directly to Download/Warden
-                this.bridge.getWebView().addJavascriptInterface(new NativeBridge(this), "WardenNativeBridge");
+                webView.addJavascriptInterface(new NativeBridge(this), "WardenNativeBridge");
             }
         } catch (Exception ignored) {}
     }

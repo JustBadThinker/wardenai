@@ -140,24 +140,8 @@ export default function App() {
     touchStartRef.current = { x: t.clientX, y: t.clientY };
   };
 
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (!touchStartRef.current || activeView === 'chat' || isSearchModalOpen) return;
-    const t = e.touches[0];
-    const dx = t.clientX - touchStartRef.current.x;
-    const dy = t.clientY - touchStartRef.current.y;
-
-    // Responsive swipe switch once distance reaches 48px with natural horizontal angle
-    if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy) * 1.25) {
-      const curIdx = SWIPE_TABS.indexOf(activeView);
-      if (curIdx !== -1) {
-        touchStartRef.current = null;
-        if (dx < 0 && curIdx < SWIPE_TABS.length - 1) {
-          navigateWithDirection(SWIPE_TABS[curIdx + 1]);
-        } else if (dx > 0 && curIdx > 0) {
-          navigateWithDirection(SWIPE_TABS[curIdx - 1]);
-        }
-      }
-    }
+  const handleTouchMove = (_e: React.TouchEvent) => {
+    // Keep touch scrolling fluid; page navigation cleanly triggers on touchEnd release
   };
 
   const handleTouchEnd = (e: React.TouchEvent) => {
@@ -170,7 +154,8 @@ export default function App() {
     const dy = t.clientY - touchStartRef.current.y;
     touchStartRef.current = null;
 
-    if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.15) {
+    // Organic swipe: at least 48px horizontal distance and predominantly horizontal movement
+    if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy) * 1.2) {
       const curIdx = SWIPE_TABS.indexOf(activeView);
       if (curIdx === -1) return;
       if (dx < 0 && curIdx < SWIPE_TABS.length - 1) {
@@ -890,31 +875,25 @@ export default function App() {
             onTouchCancel={handleTouchCancel}
             className={`flex-1 min-h-0 overflow-x-hidden ${activeView === 'chat' || activeView === 'discover' ? 'p-0 overflow-hidden' : 'p-3 sm:p-5 overflow-y-auto'}`}
           >
-            <AnimatePresence mode="popLayout" initial={false}>
+            <AnimatePresence mode="wait" initial={false}>
               <motion.div
                 key={activeView}
                 initial={{
                   opacity: 0,
-                  x: slideDirection !== 0 ? slideDirection * 48 : 0,
-                  scale: slideDirection === 0 ? 0.985 : 1
+                  x: slideDirection !== 0 ? slideDirection * 20 : 0
                 }}
                 animate={{
                   opacity: 1,
-                  x: 0,
-                  scale: 1
+                  x: 0
                 }}
                 exit={{
                   opacity: 0,
-                  x: slideDirection !== 0 ? slideDirection * -36 : 0,
-                  scale: slideDirection === 0 ? 0.985 : 1
+                  x: slideDirection !== 0 ? slideDirection * -16 : 0
                 }}
                 transition={{
-                  type: 'spring',
-                  stiffness: 380,
-                  damping: 34,
-                  mass: 0.75
+                  duration: 0.16,
+                  ease: [0.16, 1, 0.3, 1]
                 }}
-                style={{ willChange: 'transform, opacity' }}
                 className={`transform-gpu ${
                   activeView === 'chat' || activeView === 'discover'
                     ? 'h-full w-full min-h-0 overflow-hidden'

@@ -101,6 +101,7 @@ export const CommunityCharacterCard: React.FC<CommunityCharacterCardProps> = ({
               shouldBlur ? 'blur-xl scale-110' : ''
             }`}
             loading="lazy"
+            decoding="async"
             onError={handleImgError}
           />
         ) : (
@@ -122,17 +123,17 @@ export const CommunityCharacterCard: React.FC<CommunityCharacterCardProps> = ({
         {/* Top Badges Row */}
         <div className="absolute top-2.5 left-2.5 z-10 flex items-center gap-1.5">
           {character.isNsfw ? (
-            <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-rose-600/90 text-white tracking-wide shadow-sm backdrop-blur-md">
+            <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-rose-600 text-white tracking-wide shadow-sm border border-rose-400/30">
               18+
             </span>
           ) : (
-            <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-emerald-600/90 text-white tracking-wide shadow-sm backdrop-blur-md">
+            <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-emerald-600 text-white tracking-wide shadow-sm border border-emerald-400/30">
               SFW
             </span>
           )}
 
           {character.totalTokens > 0 && (
-            <span className="px-2 py-0.5 text-[10px] font-medium rounded-md bg-black/60 text-purple-300 border border-purple-500/30 backdrop-blur-md flex items-center gap-1">
+            <span className="px-2 py-0.5 text-[10px] font-medium rounded-md bg-black/80 text-purple-300 border border-purple-500/40 flex items-center gap-1 shadow-sm">
               <Coins className="w-2.5 h-2.5" />
               <span>{formatCount(character.totalTokens)}</span>
             </span>
@@ -146,7 +147,7 @@ export const CommunityCharacterCard: React.FC<CommunityCharacterCardProps> = ({
             e.stopPropagation();
             onToggleBookmark(character.id);
           }}
-          className="absolute top-2.5 right-2.5 z-10 w-8 h-8 rounded-full bg-black/50 hover:bg-black/75 backdrop-blur-md flex items-center justify-center text-neutral-300 hover:text-white transition-all border border-white/10"
+          className="absolute top-2.5 right-2.5 z-10 w-8 h-8 rounded-full bg-black/70 hover:bg-black/90 flex items-center justify-center text-neutral-300 hover:text-white transition-all border border-white/15"
           title={isBookmarked ? 'Remove bookmark' : 'Bookmark character'}
         >
           <Bookmark

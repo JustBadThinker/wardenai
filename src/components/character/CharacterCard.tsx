@@ -169,6 +169,7 @@ export const CharacterCard: React.FC<CharacterCardProps> = ({
               shouldBlur ? 'blur-xl scale-110' : ''
             }`}
             loading="lazy"
+            decoding="async"
             onError={handleImgError}
           />
         ) : (
@@ -190,11 +191,11 @@ export const CharacterCard: React.FC<CharacterCardProps> = ({
         {/* Rating Badge (18+ in crimson / SFW in emerald) */}
         <div className="absolute top-2.5 left-2.5 z-10">
           {isMature ? (
-            <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-rose-600/90 text-white tracking-wide shadow-sm backdrop-blur-md">
+            <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-rose-600 text-white tracking-wide shadow-sm border border-rose-400/30">
               18+
             </span>
           ) : (
-            <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-emerald-600/90 text-white tracking-wide shadow-sm backdrop-blur-md">
+            <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-emerald-600 text-white tracking-wide shadow-sm border border-emerald-400/30">
               SFW
             </span>
           )}
@@ -207,7 +208,7 @@ export const CharacterCard: React.FC<CharacterCardProps> = ({
             e.stopPropagation();
             onToggleBookmark(character.id);
           }}
-          className="absolute top-2.5 right-2.5 z-10 w-8 h-8 rounded-full bg-black/50 hover:bg-black/75 backdrop-blur-md flex items-center justify-center text-neutral-300 hover:text-white transition-all border border-white/10"
+          className="absolute top-2.5 right-2.5 z-10 w-8 h-8 rounded-full bg-black/70 hover:bg-black/90 flex items-center justify-center text-neutral-300 hover:text-white transition-all border border-white/15"
           title={isBookmarked ? 'Remove bookmark' : 'Bookmark character'}
         >
           <Bookmark
