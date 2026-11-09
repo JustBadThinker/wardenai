@@ -39,6 +39,7 @@ import { aiProviderService } from '../services/aiProviderService';
 import { TokenOptimizerSlider } from '../components/common/TokenOptimizerSlider';
 import { tokenPriceService, TOKEN_PRICE_PRESETS } from '../services/tokenPriceService';
 import { WardenVaultModal } from '../components/modals/WardenVaultModal';
+import { CustomSelect } from '../components/common/CustomSelect';
 
 interface SettingsViewProps {
   currentUser: User;
@@ -479,24 +480,27 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   {/* Controls: Image Fit, Blur slider, Dark Overlay slider */}
                   <div className="space-y-4 pt-2 border-t border-[#1b1e28]">
                     {/* Image Fit */}
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-4">
                       <div>
                         <label className="text-xs font-semibold text-neutral-200">Image Fit</label>
                         <p className="text-[11px] text-neutral-400">Scale behavior for widescreen and vertical displays</p>
                       </div>
-                      <select
-                        value={bgFit}
-                        onChange={e => {
-                          const val = e.target.value as any;
-                          setBgFit(val);
-                          handleApplyBackground({ fit: val });
-                        }}
-                        className="bg-[#12151e] border border-[#1b1e28] text-xs text-neutral-200 rounded-lg px-3 py-1.5 focus:outline-none focus:border-purple-500 cursor-pointer"
-                      >
-                        <option value="cover">Cover (Fill screen)</option>
-                        <option value="contain">Contain (Fit aspect)</option>
-                        <option value="fill">Fill (Stretch)</option>
-                      </select>
+                      <div className="w-44 shrink-0">
+                        <CustomSelect
+                          value={bgFit}
+                          onChange={val => {
+                            setBgFit(val as any);
+                            handleApplyBackground({ fit: val as any });
+                          }}
+                          size="sm"
+                          options={[
+                            { value: 'cover', label: 'Cover (Fill screen)' },
+                            { value: 'contain', label: 'Contain (Fit aspect)' },
+                            { value: 'fill', label: 'Fill (Stretch)' }
+                          ]}
+                          className="bg-[#12151e] border-[#1b1e28]"
+                        />
+                      </div>
                     </div>
 
                     {/* Blur Slider */}
@@ -629,21 +633,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               {/* Architecture Selector */}
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-neutral-300">Provider Architecture</label>
-                <select
+                <CustomSelect
                   value={providerConfig.providerType}
-                  onChange={e =>
+                  onChange={val =>
                     setProviderConfig({
                       ...providerConfig,
-                      providerType: e.target.value as any
+                      providerType: val as any
                     })
                   }
-                  className="w-full bg-[#12151e] border border-[#1b1e28] text-xs text-neutral-200 rounded-xl px-3 py-2.5 focus:outline-none focus:border-purple-500"
-                >
-                  <option value="custom">Custom AI Gateway / Reverse Proxy (OpenAI format)</option>
-                  <option value="gemini">Google Gemini API (Official Direct)</option>
-                  <option value="openrouter">OpenRouter API</option>
-                  <option value="simulation">Simulated Offline Roleplay Engine</option>
-                </select>
+                  options={[
+                    { value: 'custom', label: 'Custom AI Gateway / Reverse Proxy (OpenAI format)', description: 'Connect your self-hosted or reverse proxy endpoint' },
+                    { value: 'gemini', label: 'Google Gemini API (Official Direct)', description: 'Google AI Studio & Vertex models' },
+                    { value: 'openrouter', label: 'OpenRouter API', description: 'Universal router with multi-model support' },
+                    { value: 'simulation', label: 'Simulated Offline Roleplay Engine', description: 'Zero-config local simulation' }
+                  ]}
+                  className="bg-[#12151e] border-[#1b1e28]"
+                />
               </div>
 
               {/* Base URL */}
@@ -830,10 +835,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
                 <div className="space-y-1">
                   <label className="text-[11px] font-semibold text-neutral-300">Preset Model Rate</label>
-                  <select
+                  <CustomSelect
                     value={tokenPriceConfig.presetId}
-                    onChange={e => {
-                      const found = TOKEN_PRICE_PRESETS.find(p => p.presetId === e.target.value);
+                    onChange={val => {
+                      const found = TOKEN_PRICE_PRESETS.find(p => p.presetId === val);
                       if (found) {
                         const updated = {
                           ...found,
@@ -844,22 +849,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         tokenPriceService.setActiveConfig(updated);
                       }
                     }}
-                    className="w-full bg-[#171b28] border border-[#232a3d] text-xs text-neutral-200 rounded-xl px-3 py-2 focus:outline-none focus:border-purple-500 cursor-pointer"
-                  >
-                    {TOKEN_PRICE_PRESETS.map(p => {
+                    options={TOKEN_PRICE_PRESETS.map(p => {
                       const inStr = tokenPriceConfig.currency === 'IDR'
                         ? (p.pricePer1MInputIdr ? `Rp ${p.pricePer1MInputIdr.toLocaleString('id-ID')}` : tokenPriceService.formatRate(p.pricePer1MInput, 'IDR', p.pricePer1MInputIdr, tokenPriceConfig.usdToIdrRate))
                         : `$${p.pricePer1MInput}`;
                       const outStr = tokenPriceConfig.currency === 'IDR'
                         ? (p.pricePer1MOutputIdr ? `Rp ${p.pricePer1MOutputIdr.toLocaleString('id-ID')}` : tokenPriceService.formatRate(p.pricePer1MOutput, 'IDR', p.pricePer1MOutputIdr, tokenPriceConfig.usdToIdrRate))
                         : `$${p.pricePer1MOutput}`;
-                      return (
-                        <option key={p.presetId} value={p.presetId}>
-                          {p.name} — {inStr} / 1M In · {outStr} / 1M Out ({tokenPriceService.formatTokenCount(p.contextLimit)} ctx)
-                        </option>
-                      );
+                      return {
+                        value: p.presetId,
+                        label: p.name,
+                        description: `${inStr} / 1M In · ${outStr} / 1M Out (${tokenPriceService.formatTokenCount(p.contextLimit)} ctx)`
+                      };
                     })}
-                  </select>
+                    className="bg-[#171b28] border-[#232a3d]"
+                  />
                 </div>
 
                 {tokenPriceConfig.currency === 'IDR' && (

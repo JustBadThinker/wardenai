@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { ProviderConfig, ProviderType, User } from '../types';
 import { aiProviderService } from '../services/aiProviderService';
+import { CustomSelect } from '../components/common/CustomSelect';
 
 interface ProviderSettingsViewProps {
   providers: ProviderConfig[];
@@ -185,10 +186,9 @@ export const ProviderSettingsView: React.FC<ProviderSettingsViewProps> = ({
 
             <div className="space-y-1">
               <label className="text-xs font-semibold text-neutral-300">Provider Service</label>
-              <select
+              <CustomSelect<ProviderType>
                 value={providerType}
-                onChange={e => {
-                  const val = e.target.value as ProviderType;
+                onChange={val => {
                   setProviderType(val);
                   if (val === 'gemini') {
                     setDefaultModel('gemini-2.5-flash');
@@ -201,15 +201,16 @@ export const ProviderSettingsView: React.FC<ProviderSettingsViewProps> = ({
                     setDefaultModel('warden-roleplay-v1');
                   }
                 }}
-                className="w-full px-3 py-2 text-xs bg-neutral-950 border border-neutral-800 rounded-lg text-white"
-              >
-                <option value="simulation">Built-in Roleplay Simulation Engine</option>
-                <option value="openrouter">OpenRouter (Claude, Llama, Mistral)</option>
-                <option value="gemini">Google Gemini API</option>
-                <option value="openai">OpenAI (GPT-4o, GPT-4o-mini)</option>
-                <option value="anthropic">Anthropic (Claude Direct)</option>
-                <option value="custom">Custom OpenAI-Compatible Endpoint</option>
-              </select>
+                options={[
+                  { value: 'simulation', label: 'Built-in Roleplay Simulation Engine', description: 'Zero-config local simulation' },
+                  { value: 'openrouter', label: 'OpenRouter (Claude, Llama, Mistral)', description: 'Multi-provider AI routing' },
+                  { value: 'gemini', label: 'Google Gemini API', description: 'Google AI Studio direct API' },
+                  { value: 'openai', label: 'OpenAI (GPT-4o, GPT-4o-mini)', description: 'Official direct OpenAI endpoint' },
+                  { value: 'anthropic', label: 'Anthropic (Claude Direct)', description: 'Direct Claude models' },
+                  { value: 'custom', label: 'Custom OpenAI-Compatible Endpoint', description: 'Self-hosted or reverse proxy' }
+                ]}
+                className="bg-neutral-950 border-neutral-800"
+              />
             </div>
           </div>
 

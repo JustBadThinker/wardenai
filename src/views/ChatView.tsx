@@ -68,6 +68,7 @@ import { TokenCounterModal } from '../components/common/TokenCounterModal';
 import { RichTextRenderer } from '../components/common/RichTextRenderer';
 import { CatPulsingLoader } from '../components/common/CatPulsingLoader';
 import { ImageLightboxModal } from '../components/common/ImageLightboxModal';
+import { CustomSelect } from '../components/common/CustomSelect';
 import {
   exportTranscriptMarkdown,
   exportTranscriptPlainText,
@@ -2600,38 +2601,35 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 </div>
                 {/* Active Persona dropdown */}
                 <div>
-                  <label className="text-neutral-400 font-semibold block mb-1.5">Active Persona</label>
-                  <select
+                  <label className="text-neutral-400 font-semibold block mb-1.5 text-xs">Active Persona</label>
+                  <CustomSelect
                     value={activePersonaId}
-                    onChange={e => {
-                      const newId = e.target.value;
+                    onChange={newId => {
                       setActivePersonaId(newId);
                       onUpdateConversation({ ...conversation, personaId: newId });
                     }}
-                    className="w-full bg-[#131620] border border-[#202534] rounded-xl p-2.5 text-xs text-white font-medium focus:outline-none focus:border-purple-500 cursor-pointer"
-                  >
-                    {allPersonas.map(p => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
+                    options={allPersonas.map(p => ({
+                      value: p.id,
+                      label: p.name,
+                      description: p.shortDescription ? p.shortDescription.slice(0, 50) + (p.shortDescription.length > 50 ? '...' : '') : undefined
+                    }))}
+                    className="bg-[#131620] border-[#202534]"
+                  />
                 </div>
 
                 {/* Active Scenario dropdown */}
                 <div>
-                  <label className="text-neutral-400 font-semibold block mb-1.5">Active Scenario</label>
-                  <select
+                  <label className="text-neutral-400 font-semibold block mb-1.5 text-xs">Active Scenario</label>
+                  <CustomSelect
                     value={activeScenarioId}
-                    onChange={e => setActiveScenarioId(e.target.value)}
-                    className="w-full bg-[#131620] border border-[#202534] rounded-xl p-2.5 text-xs text-white font-medium focus:outline-none focus:border-purple-500 cursor-pointer"
-                  >
-                    {character.scenarios.map(sc => (
-                      <option key={sc.id} value={sc.id}>
-                        {sc.title}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={newId => setActiveScenarioId(newId)}
+                    options={character.scenarios.map(sc => ({
+                      value: sc.id,
+                      label: sc.title,
+                      description: sc.description ? sc.description.slice(0, 50) + (sc.description.length > 50 ? '...' : '') : undefined
+                    }))}
+                    className="bg-[#131620] border-[#202534]"
+                  />
                 </div>
 
                 {/* Interactive Token & Price Counter Card */}
@@ -2736,10 +2734,9 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
                   <div>
                     <label className="text-neutral-400 block mb-1 text-[11px]">Provider Architecture</label>
-                    <select
+                    <CustomSelect<ProviderType>
                       value={providerType}
-                      onChange={e => {
-                        const val = e.target.value as ProviderType;
+                      onChange={val => {
                         let newUrl = gatewayBaseUrl;
                         let newModel = gatewayModel;
                         if (val === 'openrouter') {
@@ -2754,14 +2751,15 @@ export const ChatView: React.FC<ChatViewProps> = ({
                         saveGatewayToLocalStorage({ type: val, baseUrl: newUrl, model: newModel });
                         setConnectionTestResult(null);
                       }}
-                      className="w-full bg-[#181c28] border border-[#262c3e] rounded-xl p-2 text-xs text-white cursor-pointer"
-                    >
-                      <option value="simulation">Built-in Roleplay Simulation Engine</option>
-                      <option value="custom">Custom AI Gateway / Reverse Proxy (OpenAI format)</option>
-                      <option value="openrouter">OpenRouter (Claude, Llama, Mistral)</option>
-                      <option value="openai">OpenAI Direct (GPT-4o, GPT-4o-mini)</option>
-                      <option value="gemini">Google Gemini API</option>
-                    </select>
+                      options={[
+                        { value: 'simulation', label: 'Built-in Roleplay Simulation Engine', description: 'Zero-config offline engine' },
+                        { value: 'custom', label: 'Custom AI Gateway / Reverse Proxy (OpenAI format)', description: 'Connect your own private server or proxy' },
+                        { value: 'openrouter', label: 'OpenRouter (Claude, Llama, Mistral)', description: 'Multi-model API gateway' },
+                        { value: 'openai', label: 'OpenAI Direct (GPT-4o, GPT-4o-mini)', description: 'Official OpenAI endpoint' },
+                        { value: 'gemini', label: 'Google Gemini API', description: 'Official Google Gemini models' }
+                      ]}
+                      className="bg-[#181c28] border-[#262c3e]"
+                    />
                   </div>
 
                   {/* Gateway Base URL (for custom or openrouter) */}
@@ -2915,18 +2913,20 @@ export const ChatView: React.FC<ChatViewProps> = ({
                       </div>
                     )}
 
-                    <select
+                    <CustomSelect
                       value={selectedPresetId}
-                      onChange={e => handleSelectPreset(e.target.value)}
-                      className="w-full bg-[#0c0e14] border border-[#222736] rounded-lg p-2 text-xs text-neutral-200 font-medium focus:outline-none focus:border-purple-500 cursor-pointer"
-                    >
-                      <option value="">Select a rule preset...</option>
-                      {rulePresets.map(preset => (
-                        <option key={preset.id} value={preset.id}>
-                          {preset.name}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={val => handleSelectPreset(val)}
+                      placeholder="Select a rule preset..."
+                      options={[
+                        { value: '', label: 'None (Default / Custom Prompt)' },
+                        ...rulePresets.map(preset => ({
+                          value: preset.id,
+                          label: preset.name,
+                          description: preset.prompt ? preset.prompt.slice(0, 50) + (preset.prompt.length > 50 ? '...' : '') : undefined
+                        }))
+                      ]}
+                      className="bg-[#0c0e14] border-[#222736]"
+                    />
                   </div>
 
                   <p className="text-[11px] text-neutral-400 leading-tight">

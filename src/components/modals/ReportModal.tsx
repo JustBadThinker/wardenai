@@ -13,6 +13,7 @@ import {
   ShieldAlert
 } from 'lucide-react';
 import { Character, ChatMessage, ContentReport, ReportEvidenceItem, User } from '../../types';
+import { CustomSelect } from '../common/CustomSelect';
 
 interface ReportModalProps {
   isOpen: boolean;
@@ -117,16 +118,17 @@ export const ReportModal: React.FC<ReportModalProps> = ({
 
             <div className="space-y-1">
               <label className="text-xs font-semibold text-neutral-300">Violation Category</label>
-              <select
+              <CustomSelect
                 value={category}
-                onChange={e => setCategory(e.target.value as any)}
-                className="w-full px-3 py-2 text-xs bg-neutral-900 border border-neutral-800 rounded-lg text-white"
-              >
-                <option value="nsfw_mismatch">Content Rating Mismatch (Adult content not labeled NSFW)</option>
-                <option value="hate">Hate Speech, Harassment, or Abuse</option>
-                <option value="illegal">Prohibited or Extreme Material</option>
-                <option value="spam">Commercial Spam or Bot Manipulation</option>
-              </select>
+                onChange={val => setCategory(val as any)}
+                options={[
+                  { value: 'nsfw_mismatch', label: 'Content Rating Mismatch', description: 'Adult content not labeled NSFW' },
+                  { value: 'hate', label: 'Hate Speech, Harassment, or Abuse', description: 'Attacking or abusing users or groups' },
+                  { value: 'illegal', label: 'Prohibited or Extreme Material', description: 'Violates platform safety and legal terms' },
+                  { value: 'spam', label: 'Commercial Spam or Bot Manipulation', description: 'Unsolicited advertising or bot farming' }
+                ]}
+                className="bg-neutral-900 border-neutral-800"
+              />
             </div>
 
             <div className="space-y-1">

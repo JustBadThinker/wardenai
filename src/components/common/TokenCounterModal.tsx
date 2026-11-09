@@ -23,6 +23,7 @@ import {
   TOKEN_PRICE_PRESETS,
   DEFAULT_USD_TO_IDR_RATE
 } from '../../services/tokenPriceService';
+import { CustomSelect } from './CustomSelect';
 
 interface TokenCounterModalProps {
   isOpen: boolean;
@@ -458,25 +459,24 @@ export const TokenCounterModal: React.FC<TokenCounterModalProps> = ({
                 <span>Model / Provider Preset</span>
                 <span className="text-[10px] text-purple-400 font-mono">10 presets available</span>
               </label>
-              <select
+              <CustomSelect
                 value={selectedPresetId}
-                onChange={e => handleSelectPreset(e.target.value)}
-                className="w-full bg-[#181d2e] border border-[#2b334d] rounded-xl p-2.5 text-xs text-white font-medium focus:outline-none focus:border-purple-500 cursor-pointer"
-              >
-                {TOKEN_PRICE_PRESETS.map(p => {
+                onChange={val => handleSelectPreset(val)}
+                options={TOKEN_PRICE_PRESETS.map(p => {
                   const inStr = currency === 'IDR'
                     ? (p.pricePer1MInputIdr ? `Rp ${p.pricePer1MInputIdr.toLocaleString('id-ID')}` : tokenPriceService.formatRate(p.pricePer1MInput, 'IDR', activeRate))
                     : `$${p.pricePer1MInput}`;
                   const outStr = currency === 'IDR'
                     ? (p.pricePer1MOutputIdr ? `Rp ${p.pricePer1MOutputIdr.toLocaleString('id-ID')}` : tokenPriceService.formatRate(p.pricePer1MOutput, 'IDR', activeRate))
                     : `$${p.pricePer1MOutput}`;
-                  return (
-                    <option key={p.presetId} value={p.presetId}>
-                      {p.name} — {inStr} / 1M In · {outStr} / 1M Out ({tokenPriceService.formatTokenCount(p.contextLimit)} ctx)
-                    </option>
-                  );
+                  return {
+                    value: p.presetId,
+                    label: p.name,
+                    description: `${inStr} / 1M In · ${outStr} / 1M Out (${tokenPriceService.formatTokenCount(p.contextLimit)} ctx)`
+                  };
                 })}
-              </select>
+                className="bg-[#181d2e] border-[#2b334d]"
+              />
             </div>
 
             {/* 3 Interactive Inputs for Custom Rates */}

@@ -32,6 +32,7 @@ import { Character, ContentRating, Tag } from '../types';
 import { CharacterCard } from '../components/character/CharacterCard';
 import { TagFilterDrawer } from '../components/character/TagFilterDrawer';
 import { DatacatHubView } from '../components/character/DatacatHubView';
+import { CustomSelect } from '../components/common/CustomSelect';
 import { ImportedCardData } from '../services/characterImportService';
 import {
   CommunityCharacter,
@@ -919,20 +920,21 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
               </div>
 
               {/* Right: Sort Dropdown (Latest / Trending / Popular) */}
-              <div className="relative">
-                <select
+              <div className="relative min-w-[130px]">
+                <CustomSelect<CatalogSort>
                   value={communitySort}
-                  onChange={e => {
-                    setCommunitySort(e.target.value as CatalogSort);
+                  onChange={val => {
+                    setCommunitySort(val);
                     setCurrentPage(1);
                   }}
-                  className="appearance-none bg-[#151823] border border-[#262b3d] hover:border-purple-500/40 rounded-xl pl-3.5 pr-9 py-2 text-xs text-white font-semibold focus:outline-none focus:border-purple-500 cursor-pointer"
-                >
-                  <option value="latest">Latest</option>
-                  <option value="trending">Trending</option>
-                  <option value="popular">Popular</option>
-                </select>
-                <ChevronDown className="w-3.5 h-3.5 text-neutral-400 absolute right-3 top-2.5 pointer-events-none" />
+                  size="sm"
+                  options={[
+                    { value: 'latest', label: 'Latest' },
+                    { value: 'trending', label: 'Trending' },
+                    { value: 'popular', label: 'Popular' }
+                  ]}
+                  className="bg-[#151823] border-[#262b3d] hover:border-purple-500/40 font-semibold"
+                />
               </div>
             </div>
 
@@ -1253,17 +1255,17 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                 )}
               </div>
 
-              <div className="relative">
-                <select
+              <div className="relative min-w-[150px]">
+                <CustomSelect
                   value={librarySort}
-                  onChange={e => setLibrarySort(e.target.value as any)}
-                  className="appearance-none bg-[#12151e] border border-[#1b1e28] hover:border-neutral-600 rounded-xl pl-3.5 pr-8 py-2.5 text-xs text-neutral-200 font-semibold focus:outline-none focus:border-purple-500 cursor-pointer"
-                >
-                  <option value="trending">🔥 Most Chats</option>
-                  <option value="popular">❤️ Most Popular</option>
-                  <option value="latest">✨ Newest</option>
-                </select>
-                <ChevronDown className="w-3.5 h-3.5 text-neutral-400 absolute right-3 top-3.5 pointer-events-none" />
+                  onChange={val => setLibrarySort(val as any)}
+                  options={[
+                    { value: 'trending', label: '🔥 Most Chats' },
+                    { value: 'popular', label: '❤️ Most Popular' },
+                    { value: 'latest', label: '✨ Newest' }
+                  ]}
+                  className="bg-[#12151e] border-[#1b1e28] hover:border-neutral-600 font-semibold"
+                />
               </div>
 
               <button

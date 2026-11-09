@@ -26,6 +26,7 @@ import {
   Image as ImageIcon
 } from 'lucide-react';
 import { RichTextRenderer } from '../components/common/RichTextRenderer';
+import { CustomSelect } from '../components/common/CustomSelect';
 import {
   Character,
   CharacterScenario,
@@ -657,15 +658,16 @@ export const CharacterStudioView: React.FC<CharacterStudioViewProps> = ({
               <label className="text-xs font-semibold text-neutral-300">
                 Content Rating <span className="text-rose-400">*</span>
               </label>
-              <select
+              <CustomSelect<ContentRating>
                 value={contentRating}
-                onChange={e => setContentRating(e.target.value as ContentRating)}
-                className="w-full px-3 py-2 text-xs bg-[#0c0e14] border border-[#202534] rounded-xl text-white focus:outline-none focus:border-purple-500 cursor-pointer min-w-0"
-              >
-                <option value="SFW">SFW (General Audiences)</option>
-                <option value="Mature">Mature (18+ Adult Themes, Sensitive)</option>
-                <option value="NSFW">NSFW (18+ Explicit Romance & Roleplay)</option>
-              </select>
+                onChange={val => setContentRating(val)}
+                options={[
+                  { value: 'SFW', label: 'SFW (General Audiences)', description: 'Suitable for all ages' },
+                  { value: 'Mature', label: 'Mature (18+ Themes, Sensitive)', description: 'Dark themes, violence, heavy drama' },
+                  { value: 'NSFW', label: 'NSFW (18+ Explicit Romance & Roleplay)', description: 'Uncensored adult content' }
+                ]}
+                className="bg-[#0c0e14] border-[#202534]"
+              />
             </div>
           </div>
 

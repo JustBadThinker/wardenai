@@ -16,6 +16,7 @@ import {
   Search
 } from 'lucide-react';
 import { Character, Conversation, Persona, User } from '../types';
+import { CustomSelect } from '../components/common/CustomSelect';
 
 interface ChatsListViewProps {
   conversations: Conversation[];
@@ -442,21 +443,23 @@ export const ChatsListView: React.FC<ChatsListViewProps> = ({
 
                       {/* Sort Dropdown & Select Mode Bar */}
                       <div className="flex items-center justify-between gap-3 pt-0.5">
-                        <div className="relative flex-1 max-w-[260px]">
-                          <select
+                        <div className="relative flex-1 max-w-[220px]">
+                          <CustomSelect<SortOption>
                             value={sortMode}
-                            onChange={e =>
+                            onChange={val =>
                               setSortByCharId(prev => ({
                                 ...prev,
-                                [characterId]: e.target.value as SortOption
+                                [characterId]: val
                               }))
                             }
-                            className="w-full bg-[#0d0f17] border border-[#262b3d] rounded-lg px-3 py-1.5 text-xs text-neutral-200 focus:outline-none focus:border-purple-500/60 cursor-pointer"
-                          >
-                            <option value="latest">Latest</option>
-                            <option value="oldest">Oldest</option>
-                            <option value="most_messages">Most messages</option>
-                          </select>
+                            size="sm"
+                            options={[
+                              { value: 'latest', label: 'Latest' },
+                              { value: 'oldest', label: 'Oldest' },
+                              { value: 'most_messages', label: 'Most messages' }
+                            ]}
+                            className="bg-[#0d0f17] border-[#262b3d]"
+                          />
                         </div>
 
                         <div className="flex items-center gap-2">
