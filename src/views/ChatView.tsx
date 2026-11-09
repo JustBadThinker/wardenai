@@ -1242,13 +1242,15 @@ export const ChatView: React.FC<ChatViewProps> = ({
               );
             }
             if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
+              const inner = part.slice(2, -2);
+              const isDialogue = inner.includes('"') || inner.includes('“') || inner.includes('”');
               return (
                 <strong
                   key={i}
                   className="font-bold"
-                  style={{ color: narrationColor }}
+                  style={{ color: isDialogue ? baseTextColor : narrationColor }}
                 >
-                  {part.slice(2, -2)}
+                  {inner}
                 </strong>
               );
             }
