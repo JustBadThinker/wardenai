@@ -63,3 +63,4 @@ export const CatPulsingLoader: React.FC<CatPulsingLoaderProps> = ({
     </div>
   );
 };
+

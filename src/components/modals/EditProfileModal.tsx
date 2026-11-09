@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   X,
   Camera,
@@ -20,6 +21,7 @@ interface EditProfileModalProps {
   onClose: () => void;
   user: User;
   onSave: (updates: Partial<User>) => void;
+  initialTab?: 'avatar' | 'banner' | 'details';
 }
 
 const AVATAR_PRESETS = [
@@ -38,46 +40,95 @@ const BANNER_PRESETS = [
   { name: 'Neon Metropolis', url: 'https://images.unsplash.com/photo-1508739773434-c26b3d09e071?w=1200&auto=format&fit=crop&q=80' }
 ];
 
+// Canvas helper to downscale smartphone camera images before storing in localStorage
+const resizeImageToDataUrl = (file: File, maxDim: number, quality = 0.85): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return resolve(reader.result as string);
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = () => resolve(reader.result as string);
+      img.src = reader.result as string;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+};
+
 export const EditProfileModal: React.FC<EditProfileModalProps> = ({
   isOpen,
   onClose,
   user,
-  onSave
+  onSave,
+  initialTab = 'avatar'
 }) => {
   const [displayName, setDisplayName] = useState(user.displayName || '');
   const [username, setUsername] = useState(user.username || '');
   const [bio, setBio] = useState(user.bio || '');
   const [avatarUrl, setAvatarUrl] = useState(user.avatarUrl || '');
   const [bannerUrl, setBannerUrl] = useState(user.bannerUrl || '');
-  const [tab, setTab] = useState<'avatar' | 'banner' | 'details'>('avatar');
+  const [tab, setTab] = useState<'avatar' | 'banner' | 'details'>(initialTab);
 
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
   const bannerFileInputRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => {
+    if (initialTab) {
+      setTab(initialTab);
+    }
+  }, [initialTab, isOpen]);
+
+  useEffect(() => {
+    if (isOpen) {
+      setDisplayName(user.displayName || '');
+      setUsername(user.username || '');
+      setBio(user.bio || '');
+      setAvatarUrl(user.avatarUrl || '');
+      setBannerUrl(user.bannerUrl || '');
+    }
+  }, [isOpen, user]);
+
   if (!isOpen) return null;
 
-  const handleAvatarFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        setAvatarUrl(reader.result);
-      }
-    };
-    reader.readAsDataURL(file);
+    try {
+      const dataUrl = await resizeImageToDataUrl(file, 512, 0.88);
+      setAvatarUrl(dataUrl);
+    } catch (err) {
+      console.warn('Failed to resize avatar', err);
+    }
   };
 
-  const handleBannerFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleBannerFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        setBannerUrl(reader.result);
-      }
-    };
-    reader.readAsDataURL(file);
+    try {
+      const dataUrl = await resizeImageToDataUrl(file, 1280, 0.82);
+      setBannerUrl(dataUrl);
+    } catch (err) {
+      console.warn('Failed to resize banner', err);
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -92,11 +143,19 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
     onClose();
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
-      <div className="relative w-full max-w-lg bg-[#0e111a] border border-[#222838] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+  // Portal directly to document.body so the modal is centered on the physical screen (viewport)
+  // and completely avoids CSS transform containment traps from motion parent elements
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-5 bg-black/80 backdrop-blur-md animate-fade-in"
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full max-w-lg bg-[#0e111a] border border-[#222838] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92dvh]"
+        onClick={e => e.stopPropagation()}
+      >
         {/* Header */}
-        <div className="px-5 py-4 border-b border-[#1c2232] flex items-center justify-between bg-[#121622]">
+        <div className="px-5 py-4 border-b border-[#1c2232] flex items-center justify-between bg-[#121622] shrink-0">
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 rounded-lg bg-purple-600/20 border border-purple-500/30 flex items-center justify-center text-purple-400">
               <Camera className="w-4 h-4" />
@@ -115,7 +174,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
         </div>
 
         {/* Navigation Tabs */}
-        <div className="flex border-b border-[#1c2232] bg-[#0c0f17] px-4 pt-2 gap-2 text-xs font-semibold">
+        <div className="flex border-b border-[#1c2232] bg-[#0c0f17] px-4 pt-2 gap-2 text-xs font-semibold shrink-0">
           <button
             type="button"
             onClick={() => setTab('avatar')}
@@ -369,7 +428,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
         </div>
 
         {/* Footer Actions */}
-        <div className="px-5 py-3.5 border-t border-[#1c2232] bg-[#121622] flex items-center justify-end gap-2.5">
+        <div className="px-5 py-3.5 border-t border-[#1c2232] bg-[#121622] flex items-center justify-end gap-2.5 shrink-0">
           <button
             type="button"
             onClick={onClose}
@@ -387,6 +446,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

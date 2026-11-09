@@ -61,6 +61,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
   const [bioText, setBioText] = useState(user.bio);
   const [copiedLink, setCopiedLink] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editModalInitialTab, setEditModalInitialTab] = useState<'avatar' | 'banner' | 'details'>('avatar');
 
   const isOwner = currentUser.id === user.id;
 
@@ -101,7 +102,10 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
           <div className="absolute inset-0 bg-gradient-to-t from-neutral-900 via-neutral-900/40 to-transparent" />
           {isOwner && (
             <button
-              onClick={() => setIsEditModalOpen(true)}
+              onClick={() => {
+                setEditModalInitialTab('banner');
+                setIsEditModalOpen(true);
+              }}
               className="absolute top-3 right-3 px-3 py-1.5 rounded-xl bg-black/60 hover:bg-black/85 backdrop-blur-md border border-white/20 text-white text-xs font-bold flex items-center gap-1.5 shadow-lg transition-all cursor-pointer active:scale-95 z-10"
               title="Change banner background"
             >
@@ -123,7 +127,10 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
               {isOwner && (
                 <>
                   <button
-                    onClick={() => setIsEditModalOpen(true)}
+                    onClick={() => {
+                      setEditModalInitialTab('avatar');
+                      setIsEditModalOpen(true);
+                    }}
                     className="absolute inset-0 rounded-2xl bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white text-[11px] font-bold transition-opacity cursor-pointer backdrop-blur-[2px]"
                     title="Change profile avatar"
                   >
@@ -131,7 +138,10 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
                     <span>Change</span>
                   </button>
                   <button
-                    onClick={() => setIsEditModalOpen(true)}
+                    onClick={() => {
+                      setEditModalInitialTab('avatar');
+                      setIsEditModalOpen(true);
+                    }}
                     className="absolute -bottom-1 -right-1 sm:hidden p-1.5 rounded-full bg-purple-600 border-2 border-neutral-900 text-white shadow-lg cursor-pointer"
                     title="Change profile avatar"
                   >
@@ -174,7 +184,10 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
           <div className="flex items-center gap-2">
             {isOwner && (
               <button
-                onClick={() => setIsEditModalOpen(true)}
+                onClick={() => {
+                  setEditModalInitialTab('details');
+                  setIsEditModalOpen(true);
+                }}
                 className="px-3.5 py-2 rounded-lg text-xs font-bold bg-[#181d2a] hover:bg-[#202738] border border-purple-500/30 text-purple-300 hover:text-white shadow-sm flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
               >
                 <Edit3 className="w-3.5 h-3.5 text-purple-400" />
@@ -345,6 +358,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
           isOpen={isEditModalOpen}
           onClose={() => setIsEditModalOpen(false)}
           user={user}
+          initialTab={editModalInitialTab}
           onSave={(updates) => {
             if (onUpdateProfile) {
               onUpdateProfile(updates);
