@@ -25,7 +25,8 @@ import {
   EyeOff,
   Users,
   UserCheck,
-  CheckCircle2
+  CheckCircle2,
+  ArrowUp
 } from 'lucide-react';
 import { Character, ContentRating, Tag } from '../types';
 import { CharacterCard } from '../components/character/CharacterCard';
@@ -97,6 +98,20 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
   const [activeTab, setActiveTab] = useState<DiscoverTab>('community');
   const communityScrollRef = useRef<HTMLDivElement | null>(null);
   const communitySearchInputRef = useRef<HTMLInputElement | null>(null);
+
+  const [showScrollTop, setShowScrollTop] = useState<boolean>(false);
+
+  // Global listener: jump to Explore All and scroll directly to top
+  useEffect(() => {
+    const handleScrollTop = () => {
+      setActiveTab('community');
+      if (communityScrollRef.current) {
+        communityScrollRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    };
+    window.addEventListener('warden:scroll-discover-top', handleScrollTop);
+    return () => window.removeEventListener('warden:scroll-discover-top', handleScrollTop);
+  }, []);
 
   // Header Search button: jump to Explore All, scroll to top, focus search box
   useEffect(() => {
@@ -661,7 +676,11 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
         {/* TAB 1: EXPLORE ALL CATALOG (Image 3 Layout) */}
         {/* ══════════════════════════════════════════════════════════════════════ */}
         {activeTab === 'community' && (
-          <div ref={communityScrollRef} className="w-full h-full overflow-y-auto px-3 sm:px-6 py-4 space-y-4 pb-28 max-w-7xl mx-auto">
+          <div
+            ref={communityScrollRef}
+            onScroll={e => setShowScrollTop(e.currentTarget.scrollTop > 350)}
+            className="w-full h-full overflow-y-auto px-3 sm:px-6 py-4 space-y-4 pb-28 max-w-7xl mx-auto"
+          >
             {/* Search Bar */}
             <form onSubmit={handleCommunitySearchSubmit} className="flex items-center gap-2.5">
               <div className="flex-1 relative flex items-center">
@@ -1358,6 +1377,21 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
           handleToggleFollowCreator(creatorName, avatarUrl)
         }
       />
+
+      {/* ── Floating Scroll To Top & Quick Search Jump Button (Mobile) ── */}
+      {showScrollTop && activeTab === 'community' && (
+        <button
+          type="button"
+          onClick={() => {
+            communityScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+          className="fixed bottom-20 right-4 z-40 p-3 rounded-full bg-gradient-to-tr from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white shadow-xl shadow-purple-950/60 border border-purple-400/40 backdrop-blur-md active:scale-90 transition-all cursor-pointer animate-scale-in flex items-center justify-center"
+          title="Scroll back to top"
+          aria-label="Scroll to top"
+        >
+          <ArrowUp className="w-5 h-5" />
+        </button>
+      )}
 
       {/* ── Tag Filter Drawer for Library ── */}
       <TagFilterDrawer

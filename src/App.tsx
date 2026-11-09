@@ -32,6 +32,7 @@ import { Sidebar } from './components/navigation/Sidebar';
 import { MobileBottomBar } from './components/navigation/MobileBottomBar';
 import { SlideOverDrawer } from './components/navigation/SlideOverDrawer';
 import { CharacterCard } from './components/character/CharacterCard';
+import { QuickSearchModal } from './components/character/QuickSearchModal';
 
 // Views
 import { HomeView } from './views/HomeView';
@@ -81,6 +82,7 @@ export default function App() {
   const [activeView, setActiveView] = useState<string>('home');
   const [slideDirection, setSlideDirection] = useState<number>(0);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   // Set when the header Search button is tapped; DiscoverView consumes it to focus its search box
   const [pendingSearchFocus, setPendingSearchFocus] = useState(false);
@@ -128,7 +130,7 @@ export default function App() {
   };
 
   const handleTouchStart = (e: React.TouchEvent) => {
-    if (activeView === 'chat' || isInsideHorizontalScroll(e.target)) {
+    if (activeView === 'chat' || isSearchModalOpen || isInsideHorizontalScroll(e.target)) {
       touchStartRef.current = null;
       return;
     }
@@ -136,15 +138,37 @@ export default function App() {
     touchStartRef.current = { x: t.clientX, y: t.clientY };
   };
 
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!touchStartRef.current || activeView === 'chat' || isSearchModalOpen) return;
+    const t = e.touches[0];
+    const dx = t.clientX - touchStartRef.current.x;
+    const dy = t.clientY - touchStartRef.current.y;
+
+    // Responsive swipe switch once distance reaches 48px with natural horizontal angle
+    if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy) * 1.25) {
+      const curIdx = SWIPE_TABS.indexOf(activeView);
+      if (curIdx !== -1) {
+        touchStartRef.current = null;
+        if (dx < 0 && curIdx < SWIPE_TABS.length - 1) {
+          navigateWithDirection(SWIPE_TABS[curIdx + 1]);
+        } else if (dx > 0 && curIdx > 0) {
+          navigateWithDirection(SWIPE_TABS[curIdx - 1]);
+        }
+      }
+    }
+  };
+
   const handleTouchEnd = (e: React.TouchEvent) => {
-    if (!touchStartRef.current || activeView === 'chat') return;
+    if (!touchStartRef.current || activeView === 'chat' || isSearchModalOpen) {
+      touchStartRef.current = null;
+      return;
+    }
     const t = e.changedTouches[0];
     const dx = t.clientX - touchStartRef.current.x;
     const dy = t.clientY - touchStartRef.current.y;
     touchStartRef.current = null;
 
-    // Require predominantly horizontal swipe (> 75px) and not inside a horizontal carousel
-    if (Math.abs(dx) > 75 && Math.abs(dx) > Math.abs(dy) * 1.8) {
+    if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.15) {
       const curIdx = SWIPE_TABS.indexOf(activeView);
       if (curIdx === -1) return;
       if (dx < 0 && curIdx < SWIPE_TABS.length - 1) {
@@ -154,6 +178,28 @@ export default function App() {
       }
     }
   };
+
+  const handleTouchCancel = () => {
+    touchStartRef.current = null;
+  };
+
+  // Keyboard shortcut: Cmd+K / Ctrl+K / / to open quick search modal
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsSearchModalOpen(prev => !prev);
+      } else if (
+        e.key === '/' &&
+        !['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)
+      ) {
+        e.preventDefault();
+        setIsSearchModalOpen(true);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Initialize persisted theme on boot
   useEffect(() => {
@@ -596,8 +642,16 @@ export default function App() {
           bannerUrl: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=1200',
           bio: `Community creator @${cleanHandle}. Explore their roleplay bots in Warden AI.`,
           role: 'user',
-          accountStatus: 'active',
-          createdAt: new Date().toISOString()
+          isEmailVerified: true,
+          isAgeVerified: true,
+          isSuspended: false,
+          joinedDate: new Date().toISOString(),
+          followerCount: 0,
+          followingCount: 0,
+          publishedCharacterCount: 0,
+          isNsfwAllowed: true,
+          blurNsfw: false,
+          email: `${cleanHandle}@community.warden.ai`
         };
         return dynamicUser;
       })();
@@ -742,8 +796,7 @@ export default function App() {
               onChangeContentRating={handleRequestContentRating}
               onOpenMobileMenu={() => setIsMobileMenuOpen(true)}
               onOpenSearch={() => {
-                setPendingSearchFocus(true);
-                if (activeView !== 'discover') navigateWithDirection('discover');
+                setIsSearchModalOpen(true);
               }}
               onNavigate={setActiveView}
               activeView={activeView}
@@ -752,7 +805,9 @@ export default function App() {
 
           <main
             onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
+            onTouchCancel={handleTouchCancel}
             className={`flex-1 min-h-0 overflow-x-hidden ${activeView === 'chat' || activeView === 'discover' ? 'p-0 overflow-hidden' : 'p-3 sm:p-5 overflow-y-auto'}`}
           >
             <AnimatePresence mode="wait" initial={false}>
@@ -1224,6 +1279,21 @@ export default function App() {
         isOpen={isGlobalImportOpen}
         onClose={() => setIsGlobalImportOpen(false)}
         onConfirmImport={handleDirectImportCard}
+      />
+
+      {/* Global Quick Search & Command Palette Modal */}
+      <QuickSearchModal
+        isOpen={isSearchModalOpen}
+        onClose={() => setIsSearchModalOpen(false)}
+        characters={characters}
+        onSelectCharacter={handleSelectCharacter}
+        onStartChat={handleSelectCharacter}
+        onNavigateToDiscover={() => {
+          setActiveView('discover');
+        }}
+        onScrollDiscoverTop={() => {
+          window.dispatchEvent(new CustomEvent('warden:scroll-discover-top'));
+        }}
       />
     </div>
   );
