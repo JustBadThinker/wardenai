@@ -85,7 +85,7 @@ export default function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
   const [isAppBooting, setIsAppBooting] = useState(true);
-  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   // Set when the header Search button is tapped; DiscoverView consumes it to focus its search box
   const [pendingSearchFocus, setPendingSearchFocus] = useState(false);
 
@@ -93,9 +93,6 @@ export default function App() {
   const MAIN_TABS = ['home', 'discover', 'chats', 'profile'] as const;
   type MainTab = typeof MAIN_TABS[number];
   const isMainTab = (v: string): v is MainTab => MAIN_TABS.includes(v as MainTab);
-
-  const [touchDragX, setTouchDragX] = useState(0);
-  const isHorizontalDragRef = useRef(false);
 
   const navigateWithDirection = (nextView: string) => {
     const curIdx = SWIPE_TABS.indexOf(activeView);
@@ -140,57 +137,39 @@ export default function App() {
   const handleTouchStart = (e: React.TouchEvent) => {
     if (!isMainTab(activeView) || isSearchModalOpen || isInsideHorizontalScroll(e.target)) {
       touchStartRef.current = null;
-      isHorizontalDragRef.current = false;
       return;
     }
     const t = e.touches[0];
-    touchStartRef.current = { x: t.clientX, y: t.clientY };
-    isHorizontalDragRef.current = false;
+    touchStartRef.current = { x: t.clientX, y: t.clientY, time: Date.now() };
   };
 
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (!touchStartRef.current) return;
-    const t = e.touches[0];
-    const dx = t.clientX - touchStartRef.current.x;
-    const dy = t.clientY - touchStartRef.current.y;
-
-    // Detect horizontal intention
-    if (!isHorizontalDragRef.current) {
-      if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy) * 1.25) {
-        isHorizontalDragRef.current = true;
-      } else if (Math.abs(dy) > 10) {
-        // Normal vertical scrolling: clear touchStartRef so vertical scroll has zero lag
-        touchStartRef.current = null;
-        return;
-      }
-    }
-
-    if (isHorizontalDragRef.current) {
-      const curIdx = SWIPE_TABS.indexOf(activeView);
-      // Soft boundary dampening if user drags beyond edges
-      const isAtLeftBoundary = curIdx === 0 && dx > 0;
-      const isAtRightBoundary = curIdx === SWIPE_TABS.length - 1 && dx < 0;
-      const dampedDx = (isAtLeftBoundary || isAtRightBoundary) ? dx * 0.18 : dx * 0.55;
-      setTouchDragX(dampedDx);
-    }
+  const handleTouchMove = (_e: React.TouchEvent) => {
+    // Zero CPU overhead during scrolling; keeps vertical scrolling 120Hz native and smooth
   };
 
   const handleTouchEnd = (e: React.TouchEvent) => {
     if (!touchStartRef.current || !isMainTab(activeView) || isSearchModalOpen) {
       touchStartRef.current = null;
-      isHorizontalDragRef.current = false;
-      setTouchDragX(0);
       return;
     }
     const t = e.changedTouches[0];
     const dx = t.clientX - touchStartRef.current.x;
     const dy = t.clientY - touchStartRef.current.y;
+    const dt = Date.now() - touchStartRef.current.time;
     touchStartRef.current = null;
-    isHorizontalDragRef.current = false;
-    setTouchDragX(0);
 
-    // Responsive swipe: 36px horizontal distance and predominantly horizontal movement
-    if (Math.abs(dx) > 36 && Math.abs(dx) > Math.abs(dy) * 1.15) {
+    const absDx = Math.abs(dx);
+    const absDy = Math.abs(dy);
+
+    // Angle Guard: Horizontal motion must dominate vertical motion by at least 1.8x
+    // This strictly prevents natural diagonal thumb scrolls from accidentally triggering tab switches!
+    const isHorizontalDominant = absDx > absDy * 1.8;
+
+    // Fast deliberate flick (< 280ms with 38px distance) or longer swipe (> 54px)
+    const isFlick = dt < 280 && absDx > 38;
+    const isDeliberateSwipe = absDx > 54;
+
+    if (isHorizontalDominant && (isFlick || isDeliberateSwipe)) {
       const curIdx = SWIPE_TABS.indexOf(activeView);
       if (curIdx === -1) return;
       if (dx < 0 && curIdx < SWIPE_TABS.length - 1) {
@@ -203,8 +182,6 @@ export default function App() {
 
   const handleTouchCancel = () => {
     touchStartRef.current = null;
-    isHorizontalDragRef.current = false;
-    setTouchDragX(0);
   };
 
   // Keyboard shortcut: Cmd+K / Ctrl+K / / to open quick search modal
@@ -920,10 +897,6 @@ export default function App() {
               className={`w-full h-full relative ${
                 isMainTab(activeView) ? 'z-10' : 'z-0 pointer-events-none invisible'
               }`}
-              style={{
-                transform: touchDragX !== 0 ? `translate3d(${touchDragX}px, 0, 0)` : undefined,
-                transition: touchDragX === 0 ? 'transform 0.22s cubic-bezier(0.16, 1, 0.3, 1)' : 'none'
-              }}
             >
               {/* 1. Home Tab */}
               <div
