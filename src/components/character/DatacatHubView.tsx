@@ -345,8 +345,8 @@ export const DatacatHubView: React.FC<DatacatHubViewProps> = ({
       className={`${
         isFullscreen
           ? 'fixed inset-0 z-[70] h-[100dvh] w-full'
-          : 'relative w-full h-full flex-1'
-      } overflow-hidden bg-[#0a0b0e]`}>
+          : 'relative w-full h-full flex-1 min-h-0'
+      } overflow-hidden bg-[#0a0b0e] flex flex-col`}>
       {/* ── Seamless Full-Bleed Embedded Frame (Native 100% Mobile Scale ensures perfect touch & scroll) ── */}
       <iframe
         key={reloadTrigger}
@@ -362,13 +362,12 @@ export const DatacatHubView: React.FC<DatacatHubViewProps> = ({
                 transformOrigin: 'top left'
               }
             : {}),
-          touchAction: 'pan-y pinch-zoom',
           WebkitOverflowScrolling: 'touch',
           overscrollBehavior: 'contain'
         }}
-        className="w-full h-full border-0 block"
+        className="w-full h-full flex-1 min-h-0 border-0 block"
         loading="eager"
-        sandbox="allow-downloads allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts"
+        sandbox="allow-downloads allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts allow-pointer-lock"
         referrerPolicy="no-referrer"
       />
 

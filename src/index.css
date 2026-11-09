@@ -7,11 +7,18 @@
     --font-mono: 'JetBrains Mono', monospace;
   }
 
+  html, body, #root {
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
   body {
     font-family: var(--font-body);
     background-color: #0c0e14;
     color: #e2e8f0;
-    overflow-x: hidden;
   }
 
   h1, h2, h3, h4, h5, h6 {

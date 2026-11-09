@@ -126,7 +126,7 @@ export default function App() {
   };
 
   const handleTouchStart = (e: React.TouchEvent) => {
-    if (activeView === 'chat' || isInsideHorizontalScroll(e.target)) {
+    if (activeView === 'chat' || activeView === 'discover' || isInsideHorizontalScroll(e.target)) {
       touchStartRef.current = null;
       return;
     }
@@ -715,9 +715,9 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-[100dvh] bg-neutral-950 text-neutral-100 flex flex-col antialiased selection:bg-indigo-600/30 selection:text-indigo-200">
+    <div className="h-[100dvh] max-h-[100dvh] w-full bg-neutral-950 text-neutral-100 flex flex-col antialiased selection:bg-indigo-600/30 selection:text-indigo-200 overflow-hidden fixed inset-0">
       {/* Desktop Persistent Sidebar + Main Viewport Layout */}
-      <div className="flex flex-1 min-h-[100dvh]">
+      <div className="flex flex-1 h-full min-h-0 overflow-hidden">
         <Sidebar
           currentUser={currentUser}
           activePersona={activePersona}
@@ -730,7 +730,7 @@ export default function App() {
         />
 
         {/* Main Content Area */}
-        <div className={`flex-1 flex flex-col min-w-0 ${activeView === 'chat' ? 'pb-0' : 'pb-[calc(56px+env(safe-area-inset-bottom,0px))] md:pb-0'} h-[100dvh] overflow-hidden`}>
+        <div className={`flex-1 flex flex-col min-w-0 ${activeView === 'chat' ? 'pb-0' : 'pb-[calc(56px+env(safe-area-inset-bottom,0px))] md:pb-0'} h-full min-h-0 overflow-hidden`}>
           {activeView !== 'chat' && (
             <TopHeader
               currentUser={currentUser}
@@ -748,7 +748,7 @@ export default function App() {
           <main
             onTouchStart={handleTouchStart}
             onTouchEnd={handleTouchEnd}
-            className={`flex-1 overflow-y-auto overflow-x-hidden ${activeView === 'chat' || activeView === 'discover' ? 'p-0 overflow-hidden' : 'p-3 sm:p-5'}`}
+            className={`flex-1 min-h-0 overflow-x-hidden ${activeView === 'chat' || activeView === 'discover' ? 'p-0 overflow-hidden' : 'p-3 sm:p-5 overflow-y-auto'}`}
           >
             <AnimatePresence mode="wait" initial={false}>
               <motion.div
@@ -765,7 +765,7 @@ export default function App() {
                   y: slideDirection === 0 ? -6 : 0
                 }}
                 transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-                className="h-full w-full"
+                className="h-full w-full min-h-0 overflow-hidden"
               >
             {activeView === 'home' && (
               <HomeView
