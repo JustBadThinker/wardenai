@@ -90,6 +90,9 @@ export default function App() {
   const [pendingSearchFocus, setPendingSearchFocus] = useState(false);
 
   const SWIPE_TABS = ['home', 'discover', 'chats', 'profile'];
+  const MAIN_TABS = ['home', 'discover', 'chats', 'profile'] as const;
+  type MainTab = typeof MAIN_TABS[number];
+  const isMainTab = (v: string): v is MainTab => MAIN_TABS.includes(v as MainTab);
 
   const navigateWithDirection = (nextView: string) => {
     const curIdx = SWIPE_TABS.indexOf(activeView);
@@ -132,7 +135,7 @@ export default function App() {
   };
 
   const handleTouchStart = (e: React.TouchEvent) => {
-    if (activeView === 'chat' || isSearchModalOpen || isInsideHorizontalScroll(e.target)) {
+    if (!isMainTab(activeView) || isSearchModalOpen || isInsideHorizontalScroll(e.target)) {
       touchStartRef.current = null;
       return;
     }
@@ -145,7 +148,7 @@ export default function App() {
   };
 
   const handleTouchEnd = (e: React.TouchEvent) => {
-    if (!touchStartRef.current || activeView === 'chat' || isSearchModalOpen) {
+    if (!touchStartRef.current || !isMainTab(activeView) || isSearchModalOpen) {
       touchStartRef.current = null;
       return;
     }
@@ -843,7 +846,7 @@ export default function App() {
           currentUser={currentUser}
           activePersona={activePersona}
           activeView={activeView}
-          onNavigate={setActiveView}
+          onNavigate={navigateWithDirection}
           onSwitchRole={handleSwitchRole}
           onLogout={() => setIsAuthModalOpen(true)}
           unreadReportsCount={reports.filter(r => r.status === 'pending').length}
@@ -856,14 +859,14 @@ export default function App() {
             <TopHeader
               currentUser={currentUser}
               activePersona={activePersona}
-              onSelectPersona={() => setActiveView('personas')}
+              onSelectPersona={() => navigateWithDirection('personas')}
               contentRating={contentRating}
               onChangeContentRating={handleRequestContentRating}
               onOpenMobileMenu={() => setIsMobileMenuOpen(true)}
               onOpenSearch={() => {
                 setIsSearchModalOpen(true);
               }}
-              onNavigate={setActiveView}
+              onNavigate={navigateWithDirection}
               activeView={activeView}
             />
           )}
@@ -873,484 +876,527 @@ export default function App() {
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
             onTouchCancel={handleTouchCancel}
-            className={`flex-1 min-h-0 overflow-x-hidden ${activeView === 'chat' || activeView === 'discover' ? 'p-0 overflow-hidden' : 'p-3 sm:p-5 overflow-y-auto'}`}
+            className="flex-1 min-h-0 relative overflow-hidden"
           >
-            <AnimatePresence mode="wait" initial={false}>
-              <motion.div
-                key={activeView}
-                initial={{
-                  opacity: 0,
-                  x: slideDirection !== 0 ? slideDirection * 20 : 0
-                }}
-                animate={{
-                  opacity: 1,
-                  x: 0
-                }}
-                exit={{
-                  opacity: 0,
-                  x: slideDirection !== 0 ? slideDirection * -16 : 0
-                }}
-                transition={{
-                  duration: 0.16,
-                  ease: [0.16, 1, 0.3, 1]
-                }}
-                className={`transform-gpu ${
-                  activeView === 'chat' || activeView === 'discover'
-                    ? 'h-full w-full min-h-0 overflow-hidden'
-                    : 'min-h-full w-full'
+            {/* ══════════════════════════════════════════════════════════════════════ */}
+            {/* 1. PERSISTENT CORE TABS (Kept alive in DOM so tab switching is instant, */}
+            {/*    scroll positions are 100% preserved, zero CPU spike, zero lag)       */}
+            {/* ══════════════════════════════════════════════════════════════════════ */}
+            <div
+              className={`w-full h-full relative ${
+                isMainTab(activeView) ? 'z-10' : 'z-0 pointer-events-none invisible'
+              }`}
+            >
+              {/* 1. Home Tab */}
+              <div
+                className={`w-full h-full overflow-y-auto p-3 sm:p-5 transition-opacity duration-200 transform-gpu ${
+                  activeView === 'home'
+                    ? 'relative z-10 opacity-100'
+                    : 'absolute inset-0 z-0 opacity-0 pointer-events-none invisible'
                 }`}
               >
-            {activeView === 'home' && (
-              <HomeView
-                characters={characters}
-                conversations={conversations}
-                activePersona={activePersona}
-                currentUser={currentUser}
-                onSelectCharacter={handleSelectCharacter}
-                onStartChat={handleSelectCharacter}
-                onResumeConversation={handleResumeConversation}
-                onNavigate={setActiveView}
-                isBookmarked={id => storageService.isBookmarked(id)}
-                onToggleBookmark={handleToggleBookmark}
-                onToggleLike={handleToggleLike}
-                onSelectTag={slug => {
-                  setSelectedTagSlugs([slug]);
-                  setActiveView('discover');
-                }}
-                onOpenImportModal={() => setIsGlobalImportOpen(true)}
-                onImportCard={handleDirectImportCard}
-              />
-            )}
-
-            {activeView === 'discover' && (
-              <DiscoverView
-                characters={characters}
-                allTags={tags}
-                selectedTagSlugs={selectedTagSlugs}
-                onToggleTag={handleToggleTag}
-                onClearTags={() => setSelectedTagSlugs([])}
-                onSelectCharacter={handleSelectCharacter}
-                onStartChat={handleSelectCharacter}
-                isBookmarked={id => storageService.isBookmarked(id)}
-                onToggleBookmark={handleToggleBookmark}
-                onToggleLike={handleToggleLike}
-                contentRating={contentRating}
-                onChangeContentRating={handleRequestContentRating}
-                blurNsfw={currentUser.blurNsfw}
-                onAddNewTag={handleAddNewTag}
-                onOpenImportModal={() => setIsGlobalImportOpen(true)}
-                onImportCard={handleDirectImportCard}
-                currentUserId={currentUser.id}
-                onViewCreatorProfile={handleViewCreatorProfile}
-                focusSearchRequest={pendingSearchFocus}
-                onSearchFocusHandled={() => setPendingSearchFocus(false)}
-              />
-            )}
-
-            {activeView === 'character-profile' && selectedCharacter && (
-              <CharacterProfileView
-                character={selectedCharacter}
-                personas={personas}
-                activePersona={activePersona}
-                currentUser={currentUser}
-                isFollowingCreator={storageService.isFollowing(currentUser.id, selectedCharacter.creatorId)}
-                onToggleFollow={handleToggleFollow}
-                isBookmarked={storageService.isBookmarked(selectedCharacter.id)}
-                onToggleBookmark={handleToggleBookmark}
-                onToggleLike={handleToggleLike}
-                onStartChatWithScenario={handleStartChatWithScenario}
-                onBack={() => setActiveView('discover')}
-                onOpenReportModal={c => handleOpenReportModal(c)}
-                onViewCreatorProfile={handleViewCreatorProfile}
-                onForkCharacter={handleForkCharacter}
-              />
-            )}
-
-            {activeView === 'studio' && (
-              <CharacterStudioView
-                currentUser={currentUser}
-                allTags={tags}
-                initialCharacter={selectedCharacter && selectedCharacter.creatorId === currentUser.id ? selectedCharacter : undefined}
-                onSaveCharacter={handleSaveCharacter}
-                onBack={() => setActiveView('discover')}
-                onAddNewTag={handleAddNewTag}
-                onAccountRestricted={handleAccountRestricted}
-                onStartTestingChat={char => handleStartChatWithScenario(char, char.scenarios[0])}
-                onSaveLorebook={lb => {
-                  storageService.upsertLorebook(lb);
-                  setLorebooks(storageService.getLorebooks());
-                }}
-              />
-            )}
-
-            {activeView === 'chats' && (
-              <ChatsListView
-                conversations={conversations}
-                characters={characters}
-                personas={personas}
-                currentUser={currentUser}
-                onResumeConversation={handleResumeConversation}
-                onDeleteConversation={handleDeleteConversation}
-                onStartNewChat={char => handleStartChatWithScenario(char, char.scenarios?.[0])}
-                onViewCharacter={handleSelectCharacter}
-                onNavigate={setActiveView}
-              />
-            )}
-
-            {activeView === 'chat' && (selectedCharacter || characters.length > 0) ? (() => {
-              const activeConv =
-                activeConversation ||
-                conversations[0] || {
-                  id: 'conv_empty',
-                  characterId: (selectedCharacter || characters[0]).id,
-                  userId: currentUser.id,
-                  messages: [],
-                  createdAt: new Date().toISOString(),
-                  updatedAt: new Date().toISOString(),
-                  messageCount: 0
-                };
-              let activeChar =
-                (activeConv?.characterId ? characters.find(c => c.id === activeConv.characterId) : null) ||
-                (activeConv?.characterId ? storageService.getCharacters().find(c => c.id === activeConv.characterId) : null) ||
-                selectedCharacter;
-
-              if (!activeChar && activeConv?.characterId) {
-                const rawTitle = activeConv.title || 'Character';
-                const parsedName = rawTitle.includes(' · ')
-                  ? rawTitle.split(' · ')[0].trim()
-                  : rawTitle.includes(' — ')
-                  ? rawTitle.split(' — ')[0].trim()
-                  : rawTitle;
-                const firstCharMsg = activeConv.messages.find(
-                  m => m.sender === 'character' || m.senderRole === 'assistant'
-                );
-                const scenarioTitle =
-                  activeConv.scenarioTitle ||
-                  (rawTitle.includes(' · ') ? rawTitle.split(' · ')[1].trim() : 'Initial Encounter');
-
-                activeChar = {
-                  id: activeConv.characterId,
-                  creatorId: currentUser.id,
-                  creatorUsername: 'Community',
-                  creatorAvatar: currentUser.avatarUrl,
-                  name: parsedName,
-                  subtitle: scenarioTitle,
-                  avatarUrl:
-                    'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=500',
-                  shortDescription: `${parsedName} — Roleplay character (auto-recovered).`,
-                  personality: 'Engaging, expressive, and true to persona.',
-                  background: 'Auto-recovered roleplay conversation context.',
-                  systemPrompt: `You are ${parsedName}. Embody their personality in every response.`,
-                  firstMessage: firstCharMsg?.content || '',
-                  exampleDialogue: '',
-                  contentRating: 'Mature',
-                  visibility: 'public',
-                  publicationStatus: 'published',
-                  scenarios: [
-                    {
-                      id: activeConv.scenarioId || 'sc_1',
-                      characterId: activeConv.characterId,
-                      title: scenarioTitle,
-                      description: 'Roleplay scenario.',
-                      openingMessage: firstCharMsg?.content || '',
-                      scenarioInstructions: 'Roleplay scenario.',
-                      displayOrder: 1,
-                      createdAt: activeConv.createdAt,
-                      updatedAt: activeConv.updatedAt
-                    }
-                  ],
-                  tagSlugs: ['community'],
-                  likeCount: 1,
-                  bookmarkCount: 1,
-                  chatCount: 1,
-                  createdAt: activeConv.createdAt,
-                  updatedAt: activeConv.updatedAt,
-                  age: 20
-                };
-                if (activeChar) {
-                  storageService.upsertCharacter(activeChar);
-                }
-              }
-
-              const resolvedChar = activeChar || characters[0];
-              if (!resolvedChar) return null;
-
-              return (
-                <ChatView
-                  key={`${activeConv.id}_${resolvedChar.id}`}
-                  conversation={activeConv}
-                  character={resolvedChar}
-                  scenario={activeScenario}
-                  persona={
-                    (activeConv?.personaId ? personas.find(p => p.id === activeConv.personaId) : null) ||
-                    activePersona ||
-                    personas.find(p => p.isDefault) ||
-                    personas[0]
-                  }
-                  allPersonas={personas}
-                  allProviders={providers}
-                  lorebooks={lorebooks}
+                <HomeView
+                  characters={characters}
+                  conversations={conversations}
+                  activePersona={activePersona}
                   currentUser={currentUser}
-                  onUpdateConversation={updated => {
-                    if (!updated.messages || updated.messages.length === 0) {
-                      handleDeleteConversation(updated.id);
-                      return;
-                    }
-                    storageService.upsertConversation(updated);
-                    setConversations(storageService.getConversations(currentUser.id));
-                    setActiveConversation(updated);
+                  onSelectCharacter={handleSelectCharacter}
+                  onStartChat={handleSelectCharacter}
+                  onResumeConversation={handleResumeConversation}
+                  onNavigate={navigateWithDirection}
+                  isBookmarked={id => storageService.isBookmarked(id)}
+                  onToggleBookmark={handleToggleBookmark}
+                  onToggleLike={handleToggleLike}
+                  onSelectTag={slug => {
+                    setSelectedTagSlugs([slug]);
+                    navigateWithDirection('discover');
                   }}
-                  onBack={() => setActiveView(conversations.length > 0 ? 'chats' : 'discover')}
-                  onOpenReportWithMessages={(char, msgs) => handleOpenReportModal(char, msgs)}
-                  allCharacters={characters}
-                  allConversations={conversations}
-                  onSelectConversation={handleResumeConversation}
-                  onDeleteConversation={handleDeleteConversation}
-                  onStartNewChat={char => handleStartChatWithScenario(char, char.scenarios?.[0] || char.scenarios[0])}
-                  globalBackground={globalBackground}
+                  onOpenImportModal={() => setIsGlobalImportOpen(true)}
+                  onImportCard={handleDirectImportCard}
                 />
-              );
-            })() : activeView === 'chat' ? (
-              <ChatsListView
-                conversations={conversations}
-                characters={characters}
-                personas={personas}
-                currentUser={currentUser}
-                onResumeConversation={handleResumeConversation}
-                onDeleteConversation={handleDeleteConversation}
-                onStartNewChat={char => handleStartChatWithScenario(char, char.scenarios?.[0])}
-                onViewCharacter={handleSelectCharacter}
-                onNavigate={setActiveView}
-              />
-            ) : null}
-
-            {activeView === 'personas' && (
-              <PersonaStudioView
-                personas={personas}
-                currentUser={currentUser}
-                onSavePersona={p => {
-                  storageService.upsertPersona(p);
-                  const updated = storageService.getPersonas();
-                  setPersonas(updated);
-                  setActivePersona(p);
-                }}
-                onDeletePersona={id => {
-                  storageService.deletePersona(id);
-                  const updated = storageService.getPersonas();
-                  setPersonas(updated);
-                  if (activePersona?.id === id) {
-                    setActivePersona(updated.find(x => x.isDefault) || updated[0]);
-                  }
-                }}
-                onSetDefaultPersona={id => {
-                  storageService.setDefaultPersona(id, currentUser.id);
-                  const updated = storageService.getPersonas();
-                  setPersonas(updated);
-                  const found = updated.find(x => x.id === id);
-                  if (found) setActivePersona(found);
-                }}
-              />
-            )}
-
-            {activeView === 'lorebooks' && (
-              <LorebooksView
-                lorebooks={lorebooks}
-                currentUser={currentUser}
-                onSaveLorebook={lb => {
-                  storageService.upsertLorebook(lb);
-                  setLorebooks(storageService.getLorebooks());
-                }}
-                onDeleteLorebook={id => {
-                  storageService.deleteLorebook(id);
-                  setLorebooks(storageService.getLorebooks());
-                }}
-              />
-            )}
-
-            {activeView === 'profile' && (
-              <UserProfileView
-                user={currentUser}
-                characters={characters}
-                currentUser={currentUser}
-                isFollowing={false}
-                onToggleFollow={handleToggleFollow}
-                onSelectCharacter={handleSelectCharacter}
-                onStartChat={handleSelectCharacter}
-                isBookmarked={id => storageService.isBookmarked(id)}
-                onToggleBookmark={handleToggleBookmark}
-                onToggleLike={handleToggleLike}
-                onCreateCharacter={() => setActiveView('studio')}
-                onUpdateBio={newBio => {
-                  firebaseAuthService.updateUserProfile({ bio: newBio });
-                  setCurrentUser(firebaseAuthService.getCurrentUser());
-                }}
-                onUpdateProfile={updates => {
-                  firebaseAuthService.updateUserProfile(updates);
-                  setCurrentUser(firebaseAuthService.getCurrentUser());
-                }}
-              />
-            )}
-
-            {activeView === 'user-profile' && selectedCreatorProfile && (
-              <UserProfileView
-                user={selectedCreatorProfile}
-                characters={characters}
-                currentUser={currentUser}
-                isFollowing={storageService.isFollowing(currentUser.id, selectedCreatorProfile.id)}
-                onToggleFollow={handleToggleFollow}
-                onSelectCharacter={handleSelectCharacter}
-                onStartChat={handleSelectCharacter}
-                isBookmarked={id => storageService.isBookmarked(id)}
-                onToggleBookmark={handleToggleBookmark}
-                onToggleLike={handleToggleLike}
-                onUpdateProfile={updates => {
-                  firebaseAuthService.updateUserProfile(updates);
-                  const updated = firebaseAuthService.getCurrentUser();
-                  setCurrentUser(updated);
-                  if (selectedCreatorProfile.id === updated.id) {
-                    setSelectedCreatorProfile(updated);
-                  }
-                }}
-              />
-            )}
-
-            {activeView === 'bookmarks' && (
-              <div className="max-w-5xl mx-auto pb-16 px-4 sm:px-6 space-y-6">
-                <div className="flex items-center justify-between border-b border-[#1f2433] pb-4">
-                  <div>
-                    <h1 className="text-xl sm:text-2xl font-extrabold text-white">Saved Bookmarks</h1>
-                    <p className="text-xs text-neutral-400 mt-0.5">Your pinned characters for fast access.</p>
-                  </div>
-                  <span className="text-xs text-purple-400 font-semibold px-2.5 py-1 rounded-full bg-purple-950/30 border border-purple-800/40">
-                    {characters.filter(c => storageService.isBookmarked(c.id)).length} saved
-                  </span>
-                </div>
-
-                {characters.filter(c => storageService.isBookmarked(c.id)).length === 0 ? (
-                  <div className="py-16 text-center space-y-3 bg-[#111420]/50 border border-[#202636] rounded-2xl p-8">
-                    <p className="text-sm font-bold text-white">No Bookmarked Characters Yet</p>
-                    <p className="text-xs text-neutral-400 max-w-sm mx-auto">
-                      Click the bookmark icon on any character card in Discover or Home to save them here for quick access.
-                    </p>
-                    <button
-                      onClick={() => setActiveView('discover')}
-                      className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold rounded-lg transition-colors cursor-pointer"
-                    >
-                      Browse Discover Catalog
-                    </button>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                    {characters
-                      .filter(c => storageService.isBookmarked(c.id))
-                      .map(char => (
-                        <CharacterCard
-                          key={char.id}
-                          character={char}
-                          onSelect={handleSelectCharacter}
-                          onStartChat={handleSelectCharacter}
-                          isBookmarked={true}
-                          onToggleBookmark={handleToggleBookmark}
-                          onToggleLike={handleToggleLike}
-                          blurNsfw={currentUser.blurNsfw}
-                          variant="grid"
-                        />
-                      ))}
-                  </div>
-                )}
               </div>
-            )}
 
-            {activeView === 'security' && (
-              <SecuritySettingsView
-                currentUser={currentUser}
-                onUpdateUser={updates => {
-                  const updated = firebaseAuthService.updateUserProfile(updates);
-                  setCurrentUser(updated);
-                }}
-                onNavigate={setActiveView}
-              />
-            )}
+              {/* 2. Discover Tab */}
+              <div
+                className={`w-full h-full overflow-hidden p-0 transition-opacity duration-200 transform-gpu ${
+                  activeView === 'discover'
+                    ? 'relative z-10 opacity-100'
+                    : 'absolute inset-0 z-0 opacity-0 pointer-events-none invisible'
+                }`}
+              >
+                <DiscoverView
+                  characters={characters}
+                  allTags={tags}
+                  selectedTagSlugs={selectedTagSlugs}
+                  onToggleTag={handleToggleTag}
+                  onClearTags={() => setSelectedTagSlugs([])}
+                  onSelectCharacter={handleSelectCharacter}
+                  onStartChat={handleSelectCharacter}
+                  isBookmarked={id => storageService.isBookmarked(id)}
+                  onToggleBookmark={handleToggleBookmark}
+                  onToggleLike={handleToggleLike}
+                  contentRating={contentRating}
+                  onChangeContentRating={handleRequestContentRating}
+                  blurNsfw={currentUser.blurNsfw}
+                  onAddNewTag={handleAddNewTag}
+                  onOpenImportModal={() => setIsGlobalImportOpen(true)}
+                  onImportCard={handleDirectImportCard}
+                  currentUserId={currentUser.id}
+                  onViewCreatorProfile={handleViewCreatorProfile}
+                  focusSearchRequest={pendingSearchFocus}
+                  onSearchFocusHandled={() => setPendingSearchFocus(false)}
+                />
+              </div>
 
-            {activeView === 'moderation' && (
-              <ModerationView
-                currentUser={currentUser}
-                characters={characters}
-                reports={reports}
-                onApproveCharacter={handleApproveCharacter}
-                onRejectCharacter={handleRejectCharacter}
-                onRequestChanges={handleRequestChanges}
-                onResolveReport={handleResolveReport}
-                onDismissReport={handleDismissReport}
-              />
-            )}
+              {/* 3. Chats Tab */}
+              <div
+                className={`w-full h-full overflow-y-auto p-3 sm:p-5 transition-opacity duration-200 transform-gpu ${
+                  activeView === 'chats'
+                    ? 'relative z-10 opacity-100'
+                    : 'absolute inset-0 z-0 opacity-0 pointer-events-none invisible'
+                }`}
+              >
+                <ChatsListView
+                  conversations={conversations}
+                  characters={characters}
+                  personas={personas}
+                  currentUser={currentUser}
+                  onResumeConversation={handleResumeConversation}
+                  onDeleteConversation={handleDeleteConversation}
+                  onStartNewChat={char => handleStartChatWithScenario(char, char.scenarios?.[0])}
+                  onViewCharacter={handleSelectCharacter}
+                  onNavigate={navigateWithDirection}
+                />
+              </div>
 
-            {activeView === 'investigations' && (
-              <RestrictedInvestigationView
-                currentUser={currentUser}
-                investigations={investigations}
-                conversations={conversations}
-                auditLogs={auditLogs}
-                onCreateInvestigation={handleCreateInvestigation}
-                onApproveInvestigation={handleApproveInvestigation}
-                onCloseInvestigation={handleCloseInvestigation}
-              />
-            )}
+              {/* 4. Profile Tab */}
+              <div
+                className={`w-full h-full overflow-y-auto p-3 sm:p-5 transition-opacity duration-200 transform-gpu ${
+                  activeView === 'profile'
+                    ? 'relative z-10 opacity-100'
+                    : 'absolute inset-0 z-0 opacity-0 pointer-events-none invisible'
+                }`}
+              >
+                <UserProfileView
+                  user={currentUser}
+                  characters={characters}
+                  currentUser={currentUser}
+                  isFollowing={false}
+                  onToggleFollow={handleToggleFollow}
+                  onSelectCharacter={handleSelectCharacter}
+                  onStartChat={handleSelectCharacter}
+                  isBookmarked={id => storageService.isBookmarked(id)}
+                  onToggleBookmark={handleToggleBookmark}
+                  onToggleLike={handleToggleLike}
+                  onCreateCharacter={() => navigateWithDirection('studio')}
+                  onUpdateBio={newBio => {
+                    firebaseAuthService.updateUserProfile({ bio: newBio });
+                    setCurrentUser(firebaseAuthService.getCurrentUser());
+                  }}
+                  onUpdateProfile={updates => {
+                    firebaseAuthService.updateUserProfile(updates);
+                    setCurrentUser(firebaseAuthService.getCurrentUser());
+                  }}
+                />
+              </div>
+            </div>
 
-            {activeView === 'audit-logs' && (
-              <RestrictedInvestigationView
-                currentUser={currentUser}
-                investigations={investigations}
-                conversations={conversations}
-                auditLogs={auditLogs}
-                onCreateInvestigation={handleCreateInvestigation}
-                onApproveInvestigation={handleApproveInvestigation}
-                onCloseInvestigation={handleCloseInvestigation}
-              />
-            )}
+            {/* ══════════════════════════════════════════════════════════════════════ */}
+            {/* 2. SECONDARY / SUBVIEWS (Overlays with smooth AnimatePresence)         */}
+            {/* ══════════════════════════════════════════════════════════════════════ */}
+            <AnimatePresence mode="wait" initial={false}>
+              {!isMainTab(activeView) && (
+                <motion.div
+                  key={activeView}
+                  initial={{
+                    opacity: 0,
+                    x: slideDirection !== 0 ? slideDirection * 20 : 0
+                  }}
+                  animate={{
+                    opacity: 1,
+                    x: 0
+                  }}
+                  exit={{
+                    opacity: 0,
+                    x: slideDirection !== 0 ? slideDirection * -16 : 0
+                  }}
+                  transition={{
+                    duration: 0.16,
+                    ease: [0.16, 1, 0.3, 1]
+                  }}
+                  className={`absolute inset-0 z-20 bg-neutral-950 transform-gpu ${
+                    activeView === 'chat'
+                      ? 'h-full w-full min-h-0 overflow-hidden'
+                      : 'h-full w-full overflow-y-auto p-3 sm:p-5'
+                  }`}
+                >
+                  {activeView === 'character-profile' && selectedCharacter && (
+                    <CharacterProfileView
+                      character={selectedCharacter}
+                      personas={personas}
+                      activePersona={activePersona}
+                      currentUser={currentUser}
+                      isFollowingCreator={storageService.isFollowing(currentUser.id, selectedCharacter.creatorId)}
+                      onToggleFollow={handleToggleFollow}
+                      isBookmarked={storageService.isBookmarked(selectedCharacter.id)}
+                      onToggleBookmark={handleToggleBookmark}
+                      onToggleLike={handleToggleLike}
+                      onStartChatWithScenario={handleStartChatWithScenario}
+                      onBack={() => navigateWithDirection('discover')}
+                      onOpenReportModal={c => handleOpenReportModal(c)}
+                      onViewCreatorProfile={handleViewCreatorProfile}
+                      onForkCharacter={handleForkCharacter}
+                    />
+                  )}
 
-            {activeView === 'providers' && (
-              <ProviderSettingsView
-                providers={providers}
-                currentUser={currentUser}
-                onSaveProvider={p => {
-                  storageService.upsertProvider(p);
-                  setProviders(storageService.getProviders(currentUser.id));
-                }}
-                onDeleteProvider={id => {
-                  storageService.deleteProvider(id);
-                  setProviders(storageService.getProviders(currentUser.id));
-                }}
-                onSetDefaultProvider={id => {
-                  storageService.setDefaultProvider(id, currentUser.id);
-                  setProviders(storageService.getProviders(currentUser.id));
-                }}
-              />
-            )}
+                  {activeView === 'studio' && (
+                    <CharacterStudioView
+                      currentUser={currentUser}
+                      allTags={tags}
+                      initialCharacter={selectedCharacter && selectedCharacter.creatorId === currentUser.id ? selectedCharacter : undefined}
+                      onSaveCharacter={handleSaveCharacter}
+                      onBack={() => navigateWithDirection('discover')}
+                      onAddNewTag={handleAddNewTag}
+                      onAccountRestricted={handleAccountRestricted}
+                      onStartTestingChat={char => handleStartChatWithScenario(char, char.scenarios[0])}
+                      onSaveLorebook={lb => {
+                        storageService.upsertLorebook(lb);
+                        setLorebooks(storageService.getLorebooks());
+                      }}
+                    />
+                  )}
 
-            {activeView === 'settings' && (
-              <SettingsView
-                currentUser={currentUser}
-                onUpdateUser={updates => {
-                  const updated = firebaseAuthService.updateUserProfile(updates);
-                  setCurrentUser(updated);
-                }}
-                providers={providers}
-                onSaveProvider={p => {
-                  storageService.upsertProvider(p);
-                  setProviders(storageService.getProviders(currentUser.id));
-                }}
-                globalBackground={globalBackground}
-                onUpdateGlobalBackground={setGlobalBackground}
-                onBack={() => setActiveView('home')}
-                onNavigate={setActiveView}
-              />
-            )}
+                  {activeView === 'chat' && (selectedCharacter || characters.length > 0) ? (() => {
+                    const activeConv =
+                      activeConversation ||
+                      conversations[0] || {
+                        id: 'conv_empty',
+                        characterId: (selectedCharacter || characters[0]).id,
+                        userId: currentUser.id,
+                        messages: [],
+                        createdAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString(),
+                        messageCount: 0
+                      };
+                    let activeChar =
+                      (activeConv?.characterId ? characters.find(c => c.id === activeConv.characterId) : null) ||
+                      (activeConv?.characterId ? storageService.getCharacters().find(c => c.id === activeConv.characterId) : null) ||
+                      selectedCharacter;
 
-            {activeView === 'privacy-security' && (
-              <PrivacySecurityView onBack={() => navigateWithDirection('settings')} />
-            )}
-              </motion.div>
+                    if (!activeChar && activeConv?.characterId) {
+                      const rawTitle = activeConv.title || 'Character';
+                      const parsedName = rawTitle.includes(' · ')
+                        ? rawTitle.split(' · ')[0].trim()
+                        : rawTitle.includes(' — ')
+                        ? rawTitle.split(' — ')[0].trim()
+                        : rawTitle;
+                      const firstCharMsg = activeConv.messages.find(
+                        m => m.sender === 'character' || m.senderRole === 'assistant'
+                      );
+                      const scenarioTitle =
+                        activeConv.scenarioTitle ||
+                        (rawTitle.includes(' · ') ? rawTitle.split(' · ')[1].trim() : 'Initial Encounter');
+
+                      activeChar = {
+                        id: activeConv.characterId,
+                        creatorId: currentUser.id,
+                        creatorUsername: 'Community',
+                        creatorAvatar: currentUser.avatarUrl,
+                        name: parsedName,
+                        subtitle: scenarioTitle,
+                        avatarUrl:
+                          'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=500',
+                        shortDescription: `${parsedName} — Roleplay character (auto-recovered).`,
+                        personality: 'Engaging, expressive, and true to persona.',
+                        background: 'Auto-recovered roleplay conversation context.',
+                        systemPrompt: `You are ${parsedName}. Embody their personality in every response.`,
+                        firstMessage: firstCharMsg?.content || '',
+                        exampleDialogue: '',
+                        contentRating: 'Mature',
+                        visibility: 'public',
+                        publicationStatus: 'published',
+                        scenarios: [
+                          {
+                            id: activeConv.scenarioId || 'sc_1',
+                            characterId: activeConv.characterId,
+                            title: scenarioTitle,
+                            description: 'Roleplay scenario.',
+                            openingMessage: firstCharMsg?.content || '',
+                            scenarioInstructions: 'Roleplay scenario.',
+                            displayOrder: 1,
+                            createdAt: activeConv.createdAt,
+                            updatedAt: activeConv.updatedAt
+                          }
+                        ],
+                        tagSlugs: ['community'],
+                        likeCount: 1,
+                        bookmarkCount: 1,
+                        chatCount: 1,
+                        createdAt: activeConv.createdAt,
+                        updatedAt: activeConv.updatedAt,
+                        age: 20
+                      };
+                      if (activeChar) {
+                        storageService.upsertCharacter(activeChar);
+                      }
+                    }
+
+                    const resolvedChar = activeChar || characters[0];
+                    if (!resolvedChar) return null;
+
+                    return (
+                      <ChatView
+                        key={`${activeConv.id}_${resolvedChar.id}`}
+                        conversation={activeConv}
+                        character={resolvedChar}
+                        scenario={activeScenario}
+                        persona={
+                          (activeConv?.personaId ? personas.find(p => p.id === activeConv.personaId) : null) ||
+                          activePersona ||
+                          personas.find(p => p.isDefault) ||
+                          personas[0]
+                        }
+                        allPersonas={personas}
+                        allProviders={providers}
+                        lorebooks={lorebooks}
+                        currentUser={currentUser}
+                        onUpdateConversation={updated => {
+                          if (!updated.messages || updated.messages.length === 0) {
+                            handleDeleteConversation(updated.id);
+                            return;
+                          }
+                          storageService.upsertConversation(updated);
+                          setConversations(storageService.getConversations(currentUser.id));
+                          setActiveConversation(updated);
+                        }}
+                        onBack={() => navigateWithDirection(conversations.length > 0 ? 'chats' : 'discover')}
+                        onOpenReportWithMessages={(char, msgs) => handleOpenReportModal(char, msgs)}
+                        allCharacters={characters}
+                        allConversations={conversations}
+                        onSelectConversation={handleResumeConversation}
+                        onDeleteConversation={handleDeleteConversation}
+                        onStartNewChat={char => handleStartChatWithScenario(char, char.scenarios?.[0] || char.scenarios[0])}
+                        globalBackground={globalBackground}
+                      />
+                    );
+                  })() : activeView === 'chat' ? (
+                    <ChatsListView
+                      conversations={conversations}
+                      characters={characters}
+                      personas={personas}
+                      currentUser={currentUser}
+                      onResumeConversation={handleResumeConversation}
+                      onDeleteConversation={handleDeleteConversation}
+                      onStartNewChat={char => handleStartChatWithScenario(char, char.scenarios?.[0])}
+                      onViewCharacter={handleSelectCharacter}
+                      onNavigate={navigateWithDirection}
+                    />
+                  ) : null}
+
+                  {activeView === 'personas' && (
+                    <PersonaStudioView
+                      personas={personas}
+                      currentUser={currentUser}
+                      onSavePersona={p => {
+                        storageService.upsertPersona(p);
+                        const updated = storageService.getPersonas();
+                        setPersonas(updated);
+                        setActivePersona(p);
+                      }}
+                      onDeletePersona={id => {
+                        storageService.deletePersona(id);
+                        const updated = storageService.getPersonas();
+                        setPersonas(updated);
+                        if (activePersona?.id === id) {
+                          setActivePersona(updated.find(x => x.isDefault) || updated[0]);
+                        }
+                      }}
+                      onSetDefaultPersona={id => {
+                        storageService.setDefaultPersona(id, currentUser.id);
+                        const updated = storageService.getPersonas();
+                        setPersonas(updated);
+                        const found = updated.find(x => x.id === id);
+                        if (found) setActivePersona(found);
+                      }}
+                    />
+                  )}
+
+                  {activeView === 'lorebooks' && (
+                    <LorebooksView
+                      lorebooks={lorebooks}
+                      currentUser={currentUser}
+                      onSaveLorebook={lb => {
+                        storageService.upsertLorebook(lb);
+                        setLorebooks(storageService.getLorebooks());
+                      }}
+                      onDeleteLorebook={id => {
+                        storageService.deleteLorebook(id);
+                        setLorebooks(storageService.getLorebooks());
+                      }}
+                    />
+                  )}
+
+                  {activeView === 'user-profile' && selectedCreatorProfile && (
+                    <UserProfileView
+                      user={selectedCreatorProfile}
+                      characters={characters}
+                      currentUser={currentUser}
+                      isFollowing={storageService.isFollowing(currentUser.id, selectedCreatorProfile.id)}
+                      onToggleFollow={handleToggleFollow}
+                      onSelectCharacter={handleSelectCharacter}
+                      onStartChat={handleSelectCharacter}
+                      isBookmarked={id => storageService.isBookmarked(id)}
+                      onToggleBookmark={handleToggleBookmark}
+                      onToggleLike={handleToggleLike}
+                      onUpdateProfile={updates => {
+                        firebaseAuthService.updateUserProfile(updates);
+                        const updated = firebaseAuthService.getCurrentUser();
+                        setCurrentUser(updated);
+                        if (selectedCreatorProfile.id === updated.id) {
+                          setSelectedCreatorProfile(updated);
+                        }
+                      }}
+                    />
+                  )}
+
+                  {activeView === 'bookmarks' && (
+                    <div className="max-w-5xl mx-auto pb-16 px-4 sm:px-6 space-y-6">
+                      <div className="flex items-center justify-between border-b border-[#1f2433] pb-4">
+                        <div>
+                          <h1 className="text-xl sm:text-2xl font-extrabold text-white">Saved Bookmarks</h1>
+                          <p className="text-xs text-neutral-400 mt-0.5">Your pinned characters for fast access.</p>
+                        </div>
+                        <span className="text-xs text-purple-400 font-semibold px-2.5 py-1 rounded-full bg-purple-950/30 border border-purple-800/40">
+                          {characters.filter(c => storageService.isBookmarked(c.id)).length} saved
+                        </span>
+                      </div>
+
+                      {characters.filter(c => storageService.isBookmarked(c.id)).length === 0 ? (
+                        <div className="py-16 text-center space-y-3 bg-[#111420]/50 border border-[#202636] rounded-2xl p-8">
+                          <p className="text-sm font-bold text-white">No Bookmarked Characters Yet</p>
+                          <p className="text-xs text-neutral-400 max-w-sm mx-auto">
+                            Click the bookmark icon on any character card in Discover or Home to save them here for quick access.
+                          </p>
+                          <button
+                            onClick={() => navigateWithDirection('discover')}
+                            className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold rounded-lg transition-colors cursor-pointer"
+                          >
+                            Browse Discover Catalog
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                          {characters
+                            .filter(c => storageService.isBookmarked(c.id))
+                            .map(char => (
+                              <CharacterCard
+                                key={char.id}
+                                character={char}
+                                onSelect={handleSelectCharacter}
+                                onStartChat={handleSelectCharacter}
+                                isBookmarked={true}
+                                onToggleBookmark={handleToggleBookmark}
+                                onToggleLike={handleToggleLike}
+                                blurNsfw={currentUser.blurNsfw}
+                                variant="grid"
+                              />
+                            ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {activeView === 'security' && (
+                    <SecuritySettingsView
+                      currentUser={currentUser}
+                      onUpdateUser={updates => {
+                        const updated = firebaseAuthService.updateUserProfile(updates);
+                        setCurrentUser(updated);
+                      }}
+                      onNavigate={navigateWithDirection}
+                    />
+                  )}
+
+                  {activeView === 'moderation' && (
+                    <ModerationView
+                      currentUser={currentUser}
+                      characters={characters}
+                      reports={reports}
+                      onApproveCharacter={handleApproveCharacter}
+                      onRejectCharacter={handleRejectCharacter}
+                      onRequestChanges={handleRequestChanges}
+                      onResolveReport={handleResolveReport}
+                      onDismissReport={handleDismissReport}
+                    />
+                  )}
+
+                  {activeView === 'investigations' && (
+                    <RestrictedInvestigationView
+                      currentUser={currentUser}
+                      investigations={investigations}
+                      conversations={conversations}
+                      auditLogs={auditLogs}
+                      onCreateInvestigation={handleCreateInvestigation}
+                      onApproveInvestigation={handleApproveInvestigation}
+                      onCloseInvestigation={handleCloseInvestigation}
+                    />
+                  )}
+
+                  {activeView === 'audit-logs' && (
+                    <RestrictedInvestigationView
+                      currentUser={currentUser}
+                      investigations={investigations}
+                      conversations={conversations}
+                      auditLogs={auditLogs}
+                      onCreateInvestigation={handleCreateInvestigation}
+                      onApproveInvestigation={handleApproveInvestigation}
+                      onCloseInvestigation={handleCloseInvestigation}
+                    />
+                  )}
+
+                  {activeView === 'providers' && (
+                    <ProviderSettingsView
+                      providers={providers}
+                      currentUser={currentUser}
+                      onSaveProvider={p => {
+                        storageService.upsertProvider(p);
+                        setProviders(storageService.getProviders(currentUser.id));
+                      }}
+                      onDeleteProvider={id => {
+                        storageService.deleteProvider(id);
+                        setProviders(storageService.getProviders(currentUser.id));
+                      }}
+                      onSetDefaultProvider={id => {
+                        storageService.setDefaultProvider(id, currentUser.id);
+                        setProviders(storageService.getProviders(currentUser.id));
+                      }}
+                    />
+                  )}
+
+                  {activeView === 'settings' && (
+                    <SettingsView
+                      currentUser={currentUser}
+                      onUpdateUser={updates => {
+                        const updated = firebaseAuthService.updateUserProfile(updates);
+                        setCurrentUser(updated);
+                      }}
+                      providers={providers}
+                      onSaveProvider={p => {
+                        storageService.upsertProvider(p);
+                        setProviders(storageService.getProviders(currentUser.id));
+                      }}
+                      globalBackground={globalBackground}
+                      onUpdateGlobalBackground={setGlobalBackground}
+                      onBack={() => navigateWithDirection('home')}
+                      onNavigate={navigateWithDirection}
+                    />
+                  )}
+
+                  {activeView === 'privacy-security' && (
+                    <PrivacySecurityView onBack={() => navigateWithDirection('settings')} />
+                  )}
+                </motion.div>
+              )}
             </AnimatePresence>
           </main>
         </div>

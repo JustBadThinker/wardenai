@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { motion } from 'motion/react';
 import {
   Search,
   SlidersHorizontal,
@@ -656,41 +657,41 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
         <div className="flex items-center gap-2">
           {activeTab === 'community' && (
             <>
-              {/* Catalog Source Switcher: JanitorAI <-> Chub.ai with GPU Bouncy Spring Switcher */}
+              {/* Catalog Source Switcher: JanitorAI <-> Chub.ai with Framer Motion layoutId */}
               <div className="relative inline-flex items-center bg-[#12151e] p-0.5 rounded-lg border border-[#1b1e28] select-none">
-                {/* Sliding Bouncy Indicator (GPU rendered via translate3d) */}
-                <div
-                  className="absolute top-0.5 bottom-0.5 rounded-md bg-purple-600 shadow-xs pointer-events-none transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] transform-gpu"
-                  style={{
-                    width: 'calc(50% - 2px)',
-                    transform: catalogSource === 'janitor'
-                      ? 'translate3d(0, 0, 0)'
-                      : 'translate3d(100%, 0, 0)'
-                  }}
-                />
                 <button
                   type="button"
                   onClick={() => handleSourceChange('janitor')}
-                  className={`relative z-10 px-2.5 py-1 text-[11px] font-bold rounded-md transition-colors duration-200 cursor-pointer ${
-                    catalogSource === 'janitor'
-                      ? 'text-white'
-                      : 'text-neutral-400 hover:text-white'
-                  }`}
+                  className="relative px-2.5 py-1 text-[11px] font-bold rounded-md transition-colors cursor-pointer"
                   title="Browse JanitorAI characters"
                 >
-                  JanitorAI
+                  {catalogSource === 'janitor' && (
+                    <motion.span
+                      layoutId="discoverCatalogPill"
+                      transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+                      className="absolute inset-0 bg-purple-600 rounded-md shadow-xs"
+                    />
+                  )}
+                  <span className={`relative z-10 transition-colors ${catalogSource === 'janitor' ? 'text-white' : 'text-neutral-400 hover:text-white'}`}>
+                    JanitorAI
+                  </span>
                 </button>
                 <button
                   type="button"
                   onClick={() => handleSourceChange('chub')}
-                  className={`relative z-10 px-2.5 py-1 text-[11px] font-bold rounded-md transition-colors duration-200 cursor-pointer ${
-                    catalogSource === 'chub'
-                      ? 'text-white'
-                      : 'text-neutral-400 hover:text-white'
-                  }`}
+                  className="relative px-2.5 py-1 text-[11px] font-bold rounded-md transition-colors cursor-pointer"
                   title="Browse Chub.ai / Charhub characters"
                 >
-                  Chub.ai
+                  {catalogSource === 'chub' && (
+                    <motion.span
+                      layoutId="discoverCatalogPill"
+                      transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+                      className="absolute inset-0 bg-purple-600 rounded-md shadow-xs"
+                    />
+                  )}
+                  <span className={`relative z-10 transition-colors ${catalogSource === 'chub' ? 'text-white' : 'text-neutral-400 hover:text-white'}`}>
+                    Chub.ai
+                  </span>
                 </button>
               </div>
 
@@ -878,54 +879,44 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
             {/* ROW 2: Segmented Pill Filters + Sort Dropdown (Matches Image 3) */}
             <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
               <div className="flex flex-wrap items-center gap-2.5">
-                {/* Pill Group 1: Characters | Creators with GPU Bouncy Spring Switcher */}
+                {/* Pill Group 1: Characters | Creators with Framer Motion layoutId */}
                 <div className="relative inline-flex items-center p-1 rounded-full bg-[#151823] border border-[#262b3d] select-none">
-                  {/* Sliding Bouncy Indicator (GPU rendered via translate3d) */}
-                  <div
-                    className="absolute top-1 bottom-1 rounded-full bg-gradient-to-r from-purple-700 to-fuchsia-700 border border-purple-400/40 shadow-sm shadow-purple-950/50 pointer-events-none transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] transform-gpu"
-                    style={{
-                      width: 'calc(50% - 4px)',
-                      transform: entityMode === 'characters'
-                        ? 'translate3d(0, 0, 0)'
-                        : 'translate3d(100%, 0, 0)'
-                    }}
-                  />
                   <button
                     type="button"
                     onClick={() => handleSwitchEntityMode('characters')}
-                    className={`relative z-10 px-3.5 py-1 text-xs font-bold transition-colors duration-200 cursor-pointer ${
-                      entityMode === 'characters'
-                        ? 'text-white'
-                        : 'text-neutral-400 hover:text-neutral-200'
-                    }`}
+                    className="relative px-3.5 py-1 text-xs font-bold transition-colors cursor-pointer rounded-full"
                   >
-                    Characters
+                    {entityMode === 'characters' && (
+                      <motion.span
+                        layoutId="discoverEntityPill"
+                        transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+                        className="absolute inset-0 bg-gradient-to-r from-purple-700 to-fuchsia-700 border border-purple-400/40 rounded-full shadow-sm shadow-purple-950/50"
+                      />
+                    )}
+                    <span className={`relative z-10 transition-colors ${entityMode === 'characters' ? 'text-white' : 'text-neutral-400 hover:text-neutral-200'}`}>
+                      Characters
+                    </span>
                   </button>
                   <button
                     type="button"
                     onClick={() => handleSwitchEntityMode('creators')}
-                    className={`relative z-10 px-3.5 py-1 text-xs font-bold transition-colors duration-200 cursor-pointer ${
-                      entityMode === 'creators'
-                        ? 'text-white'
-                        : 'text-neutral-400 hover:text-neutral-200'
-                    }`}
+                    className="relative px-3.5 py-1 text-xs font-bold transition-colors cursor-pointer rounded-full"
                   >
-                    Creators
+                    {entityMode === 'creators' && (
+                      <motion.span
+                        layoutId="discoverEntityPill"
+                        transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+                        className="absolute inset-0 bg-gradient-to-r from-purple-700 to-fuchsia-700 border border-purple-400/40 rounded-full shadow-sm shadow-purple-950/50"
+                      />
+                    )}
+                    <span className={`relative z-10 transition-colors ${entityMode === 'creators' ? 'text-white' : 'text-neutral-400 hover:text-neutral-200'}`}>
+                      Creators
+                    </span>
                   </button>
                 </div>
 
-                {/* Pill Group 2: All | Limited Only (SFW) with GPU Bouncy Spring Switcher */}
+                {/* Pill Group 2: All | Limited Only (SFW) with Framer Motion layoutId */}
                 <div className="relative inline-flex items-center p-1 rounded-full bg-[#151823] border border-[#262b3d] select-none">
-                  {/* Sliding Bouncy Indicator (GPU rendered via translate3d) */}
-                  <div
-                    className="absolute top-1 bottom-1 rounded-full bg-gradient-to-r from-purple-700 to-fuchsia-700 border border-purple-400/40 shadow-sm shadow-purple-950/50 pointer-events-none transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] transform-gpu"
-                    style={{
-                      width: 'calc(50% - 4px)',
-                      transform: !sfwOnly
-                        ? 'translate3d(0, 0, 0)'
-                        : 'translate3d(100%, 0, 0)'
-                    }}
-                  />
                   <button
                     type="button"
                     onClick={() => {
@@ -933,14 +924,19 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                       setSfwOnly(false);
                       setCurrentPage(1);
                     }}
-                    className={`relative z-10 px-3 py-1 text-xs font-bold flex items-center gap-1.5 transition-colors duration-200 cursor-pointer ${
-                      !sfwOnly
-                        ? 'text-white'
-                        : 'text-neutral-400 hover:text-neutral-200'
-                    }`}
+                    className="relative px-3 py-1 text-xs font-bold transition-colors cursor-pointer rounded-full"
                   >
-                    <Eye className="w-3.5 h-3.5" />
-                    <span>All</span>
+                    {!sfwOnly && (
+                      <motion.span
+                        layoutId="discoverSfwPill"
+                        transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+                        className="absolute inset-0 bg-gradient-to-r from-purple-700 to-fuchsia-700 border border-purple-400/40 rounded-full shadow-sm shadow-purple-950/50"
+                      />
+                    )}
+                    <span className={`relative z-10 flex items-center gap-1.5 transition-colors ${!sfwOnly ? 'text-white' : 'text-neutral-400 hover:text-neutral-200'}`}>
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>All</span>
+                    </span>
                   </button>
                   <button
                     type="button"
@@ -949,33 +945,43 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                       setSfwOnly(true);
                       setCurrentPage(1);
                     }}
-                    className={`relative z-10 px-3 py-1 text-xs font-bold flex items-center gap-1.5 transition-colors duration-200 cursor-pointer ${
-                      sfwOnly
-                        ? 'text-white'
-                        : 'text-neutral-400 hover:text-neutral-200'
-                    }`}
+                    className="relative px-3 py-1 text-xs font-bold transition-colors cursor-pointer rounded-full"
                   >
-                    <EyeOff className="w-3.5 h-3.5" />
-                    <span>Limited Only</span>
+                    {sfwOnly && (
+                      <motion.span
+                        layoutId="discoverSfwPill"
+                        transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+                        className="absolute inset-0 bg-gradient-to-r from-purple-700 to-fuchsia-700 border border-purple-400/40 rounded-full shadow-sm shadow-purple-950/50"
+                      />
+                    )}
+                    <span className={`relative z-10 flex items-center gap-1.5 transition-colors ${sfwOnly ? 'text-white' : 'text-neutral-400 hover:text-neutral-200'}`}>
+                      <EyeOff className="w-3.5 h-3.5" />
+                      <span>Limited Only</span>
+                    </span>
                   </button>
                 </div>
 
-                {/* Pill Group 3: All | Following | Favorites */}
-                <div className="inline-flex items-center p-1 rounded-full bg-[#151823] border border-[#262b3d]">
+                {/* Pill Group 3: All | Following | Favorites with Framer Motion layoutId */}
+                <div className="relative inline-flex items-center p-1 rounded-full bg-[#151823] border border-[#262b3d] select-none">
                   <button
                     type="button"
                     onClick={() => {
                       setScopeMode('all');
                       setCurrentPage(1);
                     }}
-                    className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-                      scopeMode === 'all'
-                        ? 'bg-gradient-to-r from-purple-700/80 to-fuchsia-700/80 text-white border border-purple-400/40 shadow-sm'
-                        : 'text-neutral-400 hover:text-neutral-200'
-                    }`}
+                    className="relative px-3 py-1 text-xs font-bold transition-colors cursor-pointer rounded-full"
                   >
-                    <Globe className="w-3.5 h-3.5" />
-                    <span>All</span>
+                    {scopeMode === 'all' && (
+                      <motion.span
+                        layoutId="discoverScopePill"
+                        transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+                        className="absolute inset-0 bg-gradient-to-r from-purple-700 to-fuchsia-700 border border-purple-400/40 rounded-full shadow-sm shadow-purple-950/50"
+                      />
+                    )}
+                    <span className={`relative z-10 flex items-center gap-1.5 transition-colors ${scopeMode === 'all' ? 'text-white' : 'text-neutral-400 hover:text-neutral-200'}`}>
+                      <Globe className="w-3.5 h-3.5" />
+                      <span>All</span>
+                    </span>
                   </button>
                   <button
                     type="button"
@@ -983,19 +989,24 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                       setScopeMode('following');
                       setCurrentPage(1);
                     }}
-                    className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-                      scopeMode === 'following'
-                        ? 'bg-gradient-to-r from-purple-700/80 to-fuchsia-700/80 text-white border border-purple-400/40 shadow-sm'
-                        : 'text-neutral-400 hover:text-neutral-200'
-                    }`}
+                    className="relative px-3 py-1 text-xs font-bold transition-colors cursor-pointer rounded-full"
                   >
-                    <Users className="w-3.5 h-3.5" />
-                    <span>Following</span>
-                    {followedCreators.length > 0 && (
-                      <span className="px-1.5 py-0.2 rounded-full bg-black/40 text-[10px] text-purple-200">
-                        {followedCreators.length}
-                      </span>
+                    {scopeMode === 'following' && (
+                      <motion.span
+                        layoutId="discoverScopePill"
+                        transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+                        className="absolute inset-0 bg-gradient-to-r from-purple-700 to-fuchsia-700 border border-purple-400/40 rounded-full shadow-sm shadow-purple-950/50"
+                      />
                     )}
+                    <span className={`relative z-10 flex items-center gap-1.5 transition-colors ${scopeMode === 'following' ? 'text-white' : 'text-neutral-400 hover:text-neutral-200'}`}>
+                      <Users className="w-3.5 h-3.5" />
+                      <span>Following</span>
+                      {followedCreators.length > 0 && (
+                        <span className="px-1.5 py-0.2 rounded-full bg-black/40 text-[10px] text-purple-200">
+                          {followedCreators.length}
+                        </span>
+                      )}
+                    </span>
                   </button>
                   <button
                     type="button"
@@ -1003,14 +1014,19 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                       setScopeMode('favorites');
                       setCurrentPage(1);
                     }}
-                    className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-                      scopeMode === 'favorites'
-                        ? 'bg-gradient-to-r from-purple-700/80 to-fuchsia-700/80 text-white border border-purple-400/40 shadow-sm'
-                        : 'text-neutral-400 hover:text-neutral-200'
-                    }`}
+                    className="relative px-3 py-1 text-xs font-bold transition-colors cursor-pointer rounded-full"
                   >
-                    <Heart className="w-3.5 h-3.5" />
-                    <span>Favorites</span>
+                    {scopeMode === 'favorites' && (
+                      <motion.span
+                        layoutId="discoverScopePill"
+                        transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+                        className="absolute inset-0 bg-gradient-to-r from-purple-700 to-fuchsia-700 border border-purple-400/40 rounded-full shadow-sm shadow-purple-950/50"
+                      />
+                    )}
+                    <span className={`relative z-10 flex items-center gap-1.5 transition-colors ${scopeMode === 'favorites' ? 'text-white' : 'text-neutral-400 hover:text-neutral-200'}`}>
+                      <Heart className="w-3.5 h-3.5" />
+                      <span>Favorites</span>
+                    </span>
                   </button>
                 </div>
               </div>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { motion } from 'motion/react';
 import { Character, Conversation, Persona, User } from '../types';
 import { CharacterCard } from '../components/character/CharacterCard';
 import { CommunityCharacterCard } from '../components/character/CommunityCharacterCard';
@@ -298,28 +299,40 @@ export const HomeView: React.FC<HomeViewProps> = ({
     <div className="w-full max-w-[1440px] mx-auto px-3 sm:px-6 py-3 space-y-4 pb-24">
       {/* Row 1: Rating Pill Toggle ([ 👁 All | 🚫 Limited Only ]) + Quick Actions */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="inline-flex items-center p-1 rounded-full bg-[#181622] border border-[#2d283e]">
+        <div className="relative inline-flex items-center p-1 rounded-full bg-[#181622] border border-[#2d283e] select-none">
           <button
+            type="button"
             onClick={() => setRatingMode('all')}
-            className={`px-3.5 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-              ratingMode === 'all'
-                ? 'bg-gradient-to-r from-purple-600/90 to-fuchsia-600/80 text-white shadow-sm'
-                : 'text-neutral-400 hover:text-neutral-200'
-            }`}
+            className="relative px-3.5 py-1.5 rounded-full text-xs font-bold transition-colors cursor-pointer"
           >
-            <Eye className="w-3.5 h-3.5" />
-            <span>All</span>
+            {ratingMode === 'all' && (
+              <motion.span
+                layoutId="homeRatingPill"
+                transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+                className="absolute inset-0 bg-gradient-to-r from-purple-600/90 to-fuchsia-600/80 rounded-full shadow-sm"
+              />
+            )}
+            <span className={`relative z-10 flex items-center gap-1.5 transition-colors ${ratingMode === 'all' ? 'text-white' : 'text-neutral-400 hover:text-neutral-200'}`}>
+              <Eye className="w-3.5 h-3.5" />
+              <span>All</span>
+            </span>
           </button>
           <button
+            type="button"
             onClick={() => setRatingMode('limited')}
-            className={`px-3.5 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-              ratingMode === 'limited'
-                ? 'bg-gradient-to-r from-purple-600/90 to-fuchsia-600/80 text-white shadow-sm'
-                : 'text-neutral-400 hover:text-neutral-200'
-            }`}
+            className="relative px-3.5 py-1.5 rounded-full text-xs font-bold transition-colors cursor-pointer"
           >
-            <EyeOff className="w-3.5 h-3.5" />
-            <span>Limited Only</span>
+            {ratingMode === 'limited' && (
+              <motion.span
+                layoutId="homeRatingPill"
+                transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+                className="absolute inset-0 bg-gradient-to-r from-purple-600/90 to-fuchsia-600/80 rounded-full shadow-sm"
+              />
+            )}
+            <span className={`relative z-10 flex items-center gap-1.5 transition-colors ${ratingMode === 'limited' ? 'text-white' : 'text-neutral-400 hover:text-neutral-200'}`}>
+              <EyeOff className="w-3.5 h-3.5" />
+              <span>Limited Only</span>
+            </span>
           </button>
         </div>
 
@@ -339,91 +352,128 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
       {/* Row 2: Janitor-Style Quick Navigation Pill Bar (Image 2) */}
       <div className="overflow-x-auto no-scrollbar">
-        <div className="inline-flex items-center gap-1 p-1.5 rounded-full bg-[#181622] border border-[#2d283e] min-w-max">
+        <div className="relative inline-flex items-center gap-1 p-1.5 rounded-full bg-[#181622] border border-[#2d283e] min-w-max select-none">
           <button
+            type="button"
             onClick={() => setActiveTab('following')}
-            className={`px-4 py-1.5 rounded-full text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
-              activeTab === 'following'
-                ? 'bg-gradient-to-r from-purple-600/90 to-fuchsia-600/80 text-white shadow-sm'
-                : 'text-neutral-400 hover:text-neutral-200'
-            }`}
+            className="relative px-4 py-1.5 rounded-full text-xs font-bold transition-colors cursor-pointer"
           >
-            <Users className="w-3.5 h-3.5" />
-            <span>Following</span>
-            {followedCreators.length > 0 && (
-              <span className="px-1.5 py-0.2 rounded-full bg-black/30 text-[10px]">
-                {followedCreators.length}
-              </span>
+            {activeTab === 'following' && (
+              <motion.span
+                layoutId="homeQuickTabPill"
+                transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+                className="absolute inset-0 bg-gradient-to-r from-purple-600/90 to-fuchsia-600/80 rounded-full shadow-sm"
+              />
             )}
+            <span className={`relative z-10 flex items-center gap-2 transition-colors ${activeTab === 'following' ? 'text-white' : 'text-neutral-400 hover:text-neutral-200'}`}>
+              <Users className="w-3.5 h-3.5" />
+              <span>Following</span>
+              {followedCreators.length > 0 && (
+                <span className="px-1.5 py-0.2 rounded-full bg-black/30 text-[10px]">
+                  {followedCreators.length}
+                </span>
+              )}
+            </span>
           </button>
 
           <button
+            type="button"
             onClick={() => setActiveTab('favorites')}
-            className={`px-4 py-1.5 rounded-full text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
-              activeTab === 'favorites'
-                ? 'bg-gradient-to-r from-purple-600/90 to-fuchsia-600/80 text-white shadow-sm'
-                : 'text-neutral-400 hover:text-neutral-200'
-            }`}
+            className="relative px-4 py-1.5 rounded-full text-xs font-bold transition-colors cursor-pointer"
           >
-            <Heart className="w-3.5 h-3.5" />
-            <span>Favorites</span>
-            {savedFavorites.length > 0 && (
-              <span className="px-1.5 py-0.2 rounded-full bg-black/30 text-[10px]">
-                {savedFavorites.length}
-              </span>
+            {activeTab === 'favorites' && (
+              <motion.span
+                layoutId="homeQuickTabPill"
+                transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+                className="absolute inset-0 bg-gradient-to-r from-purple-600/90 to-fuchsia-600/80 rounded-full shadow-sm"
+              />
             )}
+            <span className={`relative z-10 flex items-center gap-2 transition-colors ${activeTab === 'favorites' ? 'text-white' : 'text-neutral-400 hover:text-neutral-200'}`}>
+              <Heart className="w-3.5 h-3.5" />
+              <span>Favorites</span>
+              {savedFavorites.length > 0 && (
+                <span className="px-1.5 py-0.2 rounded-full bg-black/30 text-[10px]">
+                  {savedFavorites.length}
+                </span>
+              )}
+            </span>
           </button>
 
           <button
+            type="button"
             onClick={() => setActiveTab('trending')}
-            className={`px-4 py-1.5 rounded-full text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
-              activeTab === 'trending'
-                ? 'bg-gradient-to-r from-purple-600/90 to-fuchsia-600/80 text-white shadow-sm'
-                : 'text-neutral-400 hover:text-neutral-200'
-            }`}
+            className="relative px-4 py-1.5 rounded-full text-xs font-bold transition-colors cursor-pointer"
           >
-            <Flame className="w-3.5 h-3.5" />
-            <span>Trending</span>
+            {activeTab === 'trending' && (
+              <motion.span
+                layoutId="homeQuickTabPill"
+                transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+                className="absolute inset-0 bg-gradient-to-r from-purple-600/90 to-fuchsia-600/80 rounded-full shadow-sm"
+              />
+            )}
+            <span className={`relative z-10 flex items-center gap-2 transition-colors ${activeTab === 'trending' ? 'text-white' : 'text-neutral-400 hover:text-neutral-200'}`}>
+              <Flame className="w-3.5 h-3.5" />
+              <span>Trending</span>
+            </span>
           </button>
 
           <button
+            type="button"
             onClick={() => setActiveTab('popular')}
-            className={`px-4 py-1.5 rounded-full text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
-              activeTab === 'popular'
-                ? 'bg-gradient-to-r from-purple-600/90 to-fuchsia-600/80 text-white shadow-sm'
-                : 'text-neutral-400 hover:text-neutral-200'
-            }`}
+            className="relative px-4 py-1.5 rounded-full text-xs font-bold transition-colors cursor-pointer"
           >
-            <Star className="w-3.5 h-3.5" />
-            <span>Popular</span>
+            {activeTab === 'popular' && (
+              <motion.span
+                layoutId="homeQuickTabPill"
+                transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+                className="absolute inset-0 bg-gradient-to-r from-purple-600/90 to-fuchsia-600/80 rounded-full shadow-sm"
+              />
+            )}
+            <span className={`relative z-10 flex items-center gap-2 transition-colors ${activeTab === 'popular' ? 'text-white' : 'text-neutral-400 hover:text-neutral-200'}`}>
+              <Star className="w-3.5 h-3.5" />
+              <span>Popular</span>
+            </span>
           </button>
 
           <button
+            type="button"
             onClick={() => setActiveTab('latest')}
-            className={`px-4 py-1.5 rounded-full text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
-              activeTab === 'latest'
-                ? 'bg-gradient-to-r from-purple-600/90 to-fuchsia-600/80 text-white shadow-sm'
-                : 'text-neutral-400 hover:text-neutral-200'
-            }`}
+            className="relative px-4 py-1.5 rounded-full text-xs font-bold transition-colors cursor-pointer"
           >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Latest</span>
+            {activeTab === 'latest' && (
+              <motion.span
+                layoutId="homeQuickTabPill"
+                transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+                className="absolute inset-0 bg-gradient-to-r from-purple-600/90 to-fuchsia-600/80 rounded-full shadow-sm"
+              />
+            )}
+            <span className={`relative z-10 flex items-center gap-2 transition-colors ${activeTab === 'latest' ? 'text-white' : 'text-neutral-400 hover:text-neutral-200'}`}>
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Latest</span>
+            </span>
           </button>
 
           <button
+            type="button"
             onClick={() => setActiveTab('creators')}
-            className={`px-4 py-1.5 rounded-full text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
-              activeTab === 'creators'
-                ? 'bg-gradient-to-r from-purple-600/90 to-fuchsia-600/80 text-white shadow-sm'
-                : 'text-neutral-400 hover:text-neutral-200'
-            }`}
+            className="relative px-4 py-1.5 rounded-full text-xs font-bold transition-colors cursor-pointer"
           >
-            <Users className="w-3.5 h-3.5" />
-            <span>Creators</span>
+            {activeTab === 'creators' && (
+              <motion.span
+                layoutId="homeQuickTabPill"
+                transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+                className="absolute inset-0 bg-gradient-to-r from-purple-600/90 to-fuchsia-600/80 rounded-full shadow-sm"
+              />
+            )}
+            <span className={`relative z-10 flex items-center gap-2 transition-colors ${activeTab === 'creators' ? 'text-white' : 'text-neutral-400 hover:text-neutral-200'}`}>
+              <Users className="w-3.5 h-3.5" />
+              <span>Creators</span>
+            </span>
           </button>
 
           {/* Explore All -> Navigates directly to Image 3 Full Catalog View */}
           <button
+            type="button"
             onClick={() => onNavigate('discover')}
             className="px-4 py-1.5 rounded-full text-xs font-bold flex items-center gap-2 text-purple-300 hover:text-white hover:bg-purple-600/20 transition-all cursor-pointer"
           >
@@ -446,41 +496,41 @@ export const HomeView: React.FC<HomeViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Catalog Source Switcher (JanitorAI <-> Chub.ai) with GPU Bouncy Indicator */}
+          {/* Catalog Source Switcher (JanitorAI <-> Chub.ai) with Framer Motion layoutId */}
           <div className="relative inline-flex items-center bg-[#131622] p-0.5 rounded-lg border border-[#262b3d] select-none">
-            {/* Sliding Bouncy Indicator (GPU rendered via translate3d) */}
-            <div
-              className="absolute top-0.5 bottom-0.5 rounded-md bg-purple-600 shadow-xs pointer-events-none transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] transform-gpu"
-              style={{
-                width: 'calc(50% - 2px)',
-                transform: catalogSource === 'janitor'
-                  ? 'translate3d(0, 0, 0)'
-                  : 'translate3d(100%, 0, 0)'
-              }}
-            />
             <button
               type="button"
               onClick={() => handleSourceChange('janitor')}
-              className={`relative z-10 px-2.5 py-1 text-[11px] font-bold rounded-md transition-colors duration-200 cursor-pointer ${
-                catalogSource === 'janitor'
-                  ? 'text-white'
-                  : 'text-neutral-400 hover:text-white'
-              }`}
+              className="relative px-2.5 py-1 text-[11px] font-bold rounded-md transition-colors cursor-pointer"
               title="Browse JanitorAI characters"
             >
-              JanitorAI
+              {catalogSource === 'janitor' && (
+                <motion.span
+                  layoutId="homeCatalogPill"
+                  transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+                  className="absolute inset-0 bg-purple-600 rounded-md shadow-xs"
+                />
+              )}
+              <span className={`relative z-10 transition-colors ${catalogSource === 'janitor' ? 'text-white' : 'text-neutral-400 hover:text-white'}`}>
+                JanitorAI
+              </span>
             </button>
             <button
               type="button"
               onClick={() => handleSourceChange('chub')}
-              className={`relative z-10 px-2.5 py-1 text-[11px] font-bold rounded-md transition-colors duration-200 cursor-pointer ${
-                catalogSource === 'chub'
-                  ? 'text-white'
-                  : 'text-neutral-400 hover:text-white'
-              }`}
+              className="relative px-2.5 py-1 text-[11px] font-bold rounded-md transition-colors cursor-pointer"
               title="Browse Chub.ai / Charhub characters"
             >
-              Chub.ai
+              {catalogSource === 'chub' && (
+                <motion.span
+                  layoutId="homeCatalogPill"
+                  transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+                  className="absolute inset-0 bg-purple-600 rounded-md shadow-xs"
+                />
+              )}
+              <span className={`relative z-10 transition-colors ${catalogSource === 'chub' ? 'text-white' : 'text-neutral-400 hover:text-white'}`}>
+                Chub.ai
+              </span>
             </button>
           </div>
 
