@@ -538,7 +538,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
   };
 
   return (
-    <div className="w-full h-full flex flex-col bg-[#0a0b0e] select-none overflow-hidden relative">
+    <div className="w-full h-full flex flex-col bg-[#0a0b0e] overflow-hidden relative">
       {/* ── Toast Notification ── */}
       {toastMessage && (
         <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 bg-purple-950/95 border border-purple-500/50 text-purple-200 text-xs font-semibold rounded-xl shadow-2xl backdrop-blur-md animate-fade-in flex items-center gap-2">
@@ -637,7 +637,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
       </div>
 
       {/* ── Main Content Area ── */}
-      <div className="flex-1 w-full overflow-hidden">
+      <div className="flex-1 w-full h-full overflow-hidden flex flex-col">
         {/* ══════════════════════════════════════════════════════════════════════ */}
         {/* TAB 1: EXPLORE ALL CATALOG (Image 3 Layout) */}
         {/* ══════════════════════════════════════════════════════════════════════ */}

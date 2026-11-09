@@ -56,7 +56,7 @@ export const DatacatHubView: React.FC<DatacatHubViewProps> = ({
   const [importStatus, setImportStatus] = useState<'idle' | 'importing' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
-  const [compactScale, setCompactScale] = useState<boolean>(() => window.innerWidth < 768);
+  const [compactScale, setCompactScale] = useState<boolean>(false);
   const [isPillExpanded, setIsPillExpanded] = useState<boolean>(false);
   const [quickImportOpen, setQuickImportOpen] = useState<boolean>(false);
   const [quickQuery, setQuickQuery] = useState<string>('');
@@ -341,28 +341,31 @@ export const DatacatHubView: React.FC<DatacatHubViewProps> = ({
 
   return (
     <div
+      data-no-swipe="true"
       className={`${
         isFullscreen
           ? 'fixed inset-0 z-[70] h-[100dvh] w-full'
-          : 'relative w-full h-[calc(100dvh-9.75rem)] md:h-[calc(100dvh-3.25rem)]'
-      } overflow-hidden bg-[#0a0b0e]`}
-    >
-      {/* ── Seamless Full-Bleed Embedded Frame (Supports Compact 78% Mobile Fit so buttons are never cut off) ── */}
+          : 'relative w-full h-full flex-1'
+      } overflow-hidden bg-[#0a0b0e]`}>
+      {/* ── Seamless Full-Bleed Embedded Frame (Native 100% Mobile Scale ensures perfect touch & scroll) ── */}
       <iframe
         key={reloadTrigger}
         ref={iframeRef}
         src={iframeSrc}
         title="Datacat Character Hub"
-        style={
-          compactScale
+        style={{
+          ...(compactScale
             ? {
                 width: '128.2%',
                 height: '128.2%',
                 transform: 'scale(0.78)',
                 transformOrigin: 'top left'
               }
-            : undefined
-        }
+            : {}),
+          touchAction: 'pan-y pinch-zoom',
+          WebkitOverflowScrolling: 'touch',
+          overscrollBehavior: 'contain'
+        }}
         className="w-full h-full border-0 block"
         loading="eager"
         sandbox="allow-downloads allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts"

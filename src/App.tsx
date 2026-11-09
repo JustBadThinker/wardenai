@@ -103,9 +103,11 @@ export default function App() {
       if (
         el.getAttribute?.('data-horizontal-scroll') === 'true' ||
         el.getAttribute?.('role') === 'tablist' ||
+        el.getAttribute?.('data-no-swipe') === 'true' ||
         el.classList?.contains('overflow-x-auto') ||
         el.classList?.contains('overflow-x-scroll') ||
         el.classList?.contains('no-swipe') ||
+        el.tagName === 'IFRAME' ||
         el.tagName === 'INPUT' ||
         el.tagName === 'TEXTAREA' ||
         el.tagName === 'SELECT'
