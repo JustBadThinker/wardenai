@@ -19,8 +19,82 @@ import { tokenOptimizerService } from './tokenOptimizerService';
 export interface StreamCallbacks {
   onChunk: (chunk: string) => void;
   onError: (error: Error) => void;
-  onComplete: (fullText: string, tokenEstimate: number) => void;
+  onComplete: (fullText: string, tokenEstimate: number, thought?: string) => void;
   onThinking?: (thought: string) => void;
+}
+
+/**
+ * Robustly separates internal model reasoning / scratchpads from actual character roleplay.
+ * Handles <think>...</think>, unclosed <think>..., <thought> tags, and plain-text scratchpads
+ * (e.g. "Let me think...", "Let me draft:").
+ */
+export function extractThoughtAndContent(rawText: string, explicitThought?: string): { thought?: string; content: string } {
+  let thought = (explicitThought || '').trim();
+  let content = (rawText || '').trim();
+
+  // 1. Tag-based extraction: <think>...</think> or unclosed <think>... (due to token cutoff)
+  if (content.includes('<think>')) {
+    if (content.includes('</think>')) {
+      const match = content.match(/<think>([\s\S]*?)<\/think>/);
+      if (match) {
+        thought = (thought ? thought + '\n\n' : '') + match[1].trim();
+        content = content.replace(/<think>[\s\S]*?<\/think>/, '').trim();
+      }
+    } else {
+      const match = content.match(/<think>([\s\S]*)$/);
+      if (match) {
+        thought = (thought ? thought + '\n\n' : '') + match[1].trim();
+        content = content.replace(/<think>[\s\S]*$/, '').trim();
+      }
+    }
+  }
+
+  // Also check <thought>...</thought> tags
+  if (content.includes('<thought>')) {
+    if (content.includes('</thought>')) {
+      const match = content.match(/<thought>([\s\S]*?)<\/thought>/);
+      if (match) {
+        thought = (thought ? thought + '\n\n' : '') + match[1].trim();
+        content = content.replace(/<thought>[\s\S]*?<\/thought>/, '').trim();
+      }
+    } else {
+      const match = content.match(/<thought>([\s\S]*)$/);
+      if (match) {
+        thought = (thought ? thought + '\n\n' : '') + match[1].trim();
+        content = content.replace(/<thought>[\s\S]*$/, '').trim();
+      }
+    }
+  }
+
+  // 2. Monologue / Scratchpad extraction:
+  // e.g., starts with "Let me think...", "Thinking Process:", "I should write...", etc.
+  // Followed by transition: "Let me draft:", "Draft:", "---", or markdown narrative like *action* or "dialogue"
+  const draftSplitRegex = /\n(?:(?:Let me draft:?|Draft:?|Here is the response:?|Response:?|Final response:?)\s*(?:\n+---)?|\n+---\s*\n+)([\s\S]*)$/i;
+  const draftMatch = content.match(draftSplitRegex);
+  if (draftMatch && draftMatch[1]) {
+    const rawThought = content.substring(0, draftMatch.index).trim();
+    thought = (thought ? thought + '\n\n' : '') + rawThought;
+    content = draftMatch[1].trim();
+  } else {
+    // Check if starts with obvious thinking monologue and then switches directly to character narrative (* or ")
+    const startMonologueRegex = /^(?:Let me think|Thinking Process|I should|According to the character card|Now, given the character card)[\s\S]+?(?=\n\n(?:\*|"))/i;
+    const monologueMatch = content.match(startMonologueRegex);
+    if (monologueMatch) {
+      const rawThought = monologueMatch[0].trim();
+      thought = (thought ? thought + '\n\n' : '') + rawThought;
+      content = content.substring(monologueMatch[0].length).trim();
+    }
+  }
+
+  // 3. If content was purely thinking (no actual dialogue produced before token cutoff)
+  if (!content && thought) {
+    content = `*(The character was deep in contemplation when their response was cut short by the token limit. Please increase "Max Output Tokens" or click Regenerate to continue.)*`;
+  }
+
+  return {
+    thought: thought.trim() || undefined,
+    content: content.trim()
+  };
 }
 
 export function cleanCreatorHandle(raw?: string): string {
@@ -370,6 +444,8 @@ class AIProviderService {
     const userName = persona?.name || 'User';
     sections.push(`[FORMATTING GUIDELINES]
 - Maintain immersion. Never break character or refer to yourself as an AI.
+- IMMEDIATELY begin your response in-character with physical actions or dialogue.
+- NEVER output internal reasoning, chain-of-thought, drafting steps, or meta-commentary (such as "Let me think...", "Plan:", or "Let me draft:") in your final output.
 - Always refer to the user by their persona name ("${userName}") and yourself as "${chatCharName}". Never output raw placeholders like {{user}}, [[user]], {{char}}, or [[char]].
 - Format physical micro-actions, gestures, tone, and environment in italics (*action*).
 - Put spoken words in double quotes ("spoken dialogue").
@@ -517,7 +593,12 @@ class AIProviderService {
       }
     }
 
-    callbacks.onComplete(fullText, Math.round(fullText.length / 4));
+    const parsed = extractThoughtAndContent(fullText);
+    fullText = parsed.content;
+    if (parsed.thought) {
+      callbacks.onThinking?.(parsed.thought);
+    }
+    callbacks.onComplete(fullText, Math.round(fullText.length / 4), parsed.thought);
   }
 
   // --- Real Provider: OpenAI Compatible ---
@@ -674,34 +755,28 @@ class AIProviderService {
       }
     }
 
-    // Handle case where model ran out of tokens (e.g. finish_reason: "length") while thinking
-    if (!fullText.trim() && reasoningText.trim()) {
-      console.warn(`[AI Router] Model generated ${reasoningText.length} chars of reasoning, but 0 content tokens (finish_reason: ${finishReason})`);
-      fullText = reasoningText.trim();
-    }
+    // Robust extraction of thoughts vs character content (strips <think>, monologue scratchpads, and drafting notes)
+    const finalParsed = extractThoughtAndContent(fullText, reasoningText);
+    fullText = finalParsed.content;
+    const finalThought = finalParsed.thought;
 
-    // Handle inline <think> tags if present in fullText
-    if (fullText.includes('<think>') && fullText.includes('</think>')) {
-      const match = fullText.match(/<think>([\s\S]*?)<\/think>/);
-      if (match) {
-        const thought = match[1].trim();
-        callbacks.onThinking?.(thought);
-        const cleaned = fullText.replace(/<think>[\s\S]*?<\/think>/, '').trim();
-        if (cleaned) {
-          fullText = cleaned;
-        }
-      }
+    if (finalThought) {
+      callbacks.onThinking?.(finalThought);
     }
 
     if (!fullText.trim()) {
-      throw new Error(
-        `The AI router returned 0 readable text tokens (finish reason: "${finishReason || 'unknown'}"). ` +
-        `This typically happens when reasoning models (like GLM-5 or DeepSeek-R1) hit the Max Output Tokens limit (${effectiveMaxTokens}) before finishing their internal reasoning. ` +
-        `Please increase "Max Output Tokens" in Settings or Character Drawer to 2048 or 4096.`
-      );
+      if (finalThought) {
+        fullText = `*(The character was deep in contemplation when their response was cut short by the token limit. Please increase "Max Output Tokens" or click Regenerate to continue.)*`;
+      } else {
+        throw new Error(
+          `The AI router returned 0 readable text tokens (finish reason: "${finishReason || 'unknown'}"). ` +
+          `This typically happens when reasoning models (like GLM-5 or DeepSeek-R1) hit the Max Output Tokens limit (${effectiveMaxTokens}) before finishing their internal reasoning. ` +
+          `Please increase "Max Output Tokens" in Settings or Character Drawer to 2048 or 4096.`
+        );
+      }
     }
 
-    callbacks.onComplete(fullText, Math.round(fullText.length / 4));
+    callbacks.onComplete(fullText, Math.round(fullText.length / 4), finalThought);
   }
 
   // --- Real Provider: Anthropic ---
@@ -766,7 +841,12 @@ class AIProviderService {
       }
     }
 
-    callbacks.onComplete(fullText, Math.round(fullText.length / 4));
+    const parsed = extractThoughtAndContent(fullText);
+    fullText = parsed.content;
+    if (parsed.thought) {
+      callbacks.onThinking?.(parsed.thought);
+    }
+    callbacks.onComplete(fullText, Math.round(fullText.length / 4), parsed.thought);
   }
 
   public async assistUserDraft(

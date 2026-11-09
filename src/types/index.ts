@@ -168,6 +168,7 @@ export interface ChatMessage {
   personaId?: string;
   personaName?: string;
   content: string;
+  thought?: string;
   timestamp: string;
   tokenCount?: number;
 }

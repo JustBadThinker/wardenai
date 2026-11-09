@@ -55,7 +55,7 @@ import {
   ConversationTokenStats,
   CumulativeTokenUsage
 } from '../types';
-import { aiProviderService, extractCleanCharacterName } from '../services/aiProviderService';
+import { aiProviderService, extractCleanCharacterName, extractThoughtAndContent } from '../services/aiProviderService';
 import { storageService, BotRulePreset } from '../services/storageService';
 import { TokenOptimizerSlider } from '../components/common/TokenOptimizerSlider';
 import { tokenOptimizerService } from '../services/tokenOptimizerService';
@@ -265,6 +265,9 @@ export const ChatView: React.FC<ChatViewProps> = ({
   const [isThinking, setIsThinking] = useState(false);
   const [thinkingContent, setThinkingContent] = useState('');
   const [isThinkingOpen, setIsThinkingOpen] = useState(false);
+  const [openThoughtMsgIds, setOpenThoughtMsgIds] = useState<Record<string, boolean>>({});
+  const toggleMessageThought = (id: string) =>
+    setOpenThoughtMsgIds(prev => ({ ...prev, [id]: !prev[id] }));
   const [displayedText, setDisplayedText] = useState('');
 
   // Chat Customization (Text coloring, Background styling, Font size)
@@ -711,6 +714,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
         customPrompt
       };
 
+      let capturedThought = '';
       await aiProviderService.streamRoleplayResponse(
         conversationWithRules,
         character,
@@ -723,6 +727,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
         },
         {
           onThinking: (thought: string) => {
+            capturedThought = thought;
             setThinkingContent(thought);
           },
           onChunk: (chunk: string) => {
@@ -733,8 +738,9 @@ export const ChatView: React.FC<ChatViewProps> = ({
             console.error('Streaming error', err);
             alert(err.message || 'Error communicating with AI router.');
           },
-          onComplete: (fullText: string) => {
+          onComplete: (fullText: string, _tokenEst?: number, thought?: string) => {
             accumulated = fullText;
+            if (thought) capturedThought = thought;
           }
         }
       );
@@ -742,7 +748,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
       // Thinking complete, now transition to sentence-by-sentence reveal with auto-scroll
       setIsThinking(false);
 
-      const targetText = (accumulated || streamingChunk).trim();
+      const parsedTarget = extractThoughtAndContent(accumulated || streamingChunk, capturedThought);
+      const targetText = parsedTarget.content.trim();
       if (!targetText) {
         console.warn('Empty AI response received, omitting empty message card');
         setStreamingChunk('');
@@ -766,6 +773,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
         senderId: character.id,
         senderRole: 'assistant',
         content: targetText,
+        thought: parsedTarget.thought,
         timestamp: 'Today at ' + new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
       };
 
@@ -851,6 +859,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
         customPrompt
       };
 
+      let capturedThought = '';
       await aiProviderService.streamRoleplayResponse(
         conversationWithRules,
         character,
@@ -863,6 +872,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
         },
         {
           onThinking: (thought: string) => {
+            capturedThought = thought;
             setThinkingContent(thought);
           },
           onChunk: (chunk: string) => {
@@ -873,15 +883,17 @@ export const ChatView: React.FC<ChatViewProps> = ({
             console.error('Streaming error', err);
             alert(err.message || 'Error communicating with AI router.');
           },
-          onComplete: (fullText: string) => {
+          onComplete: (fullText: string, _tokenEst?: number, thought?: string) => {
             accumulated = fullText;
+            if (thought) capturedThought = thought;
           }
         }
       );
 
       // Thinking complete, now sentence-by-sentence reveal with auto-scroll
       setIsThinking(false);
-      const targetText = (accumulated || streamingChunk).trim();
+      const parsedTarget = extractThoughtAndContent(accumulated || streamingChunk, capturedThought);
+      const targetText = parsedTarget.content.trim();
       if (!targetText) {
         console.warn('Empty AI response received, omitting empty message card');
         setStreamingChunk('');
@@ -905,6 +917,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
         senderId: character.id,
         senderRole: 'assistant',
         content: targetText,
+        thought: parsedTarget.thought,
         timestamp: 'Today at ' + new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
       };
 
@@ -975,6 +988,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
         customPrompt
       };
 
+      let capturedThought = '';
       await aiProviderService.streamRoleplayResponse(
         conversationForContinue,
         character,
@@ -987,6 +1001,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
         },
         {
           onThinking: (thought: string) => {
+            capturedThought = thought;
             setThinkingContent(thought);
           },
           onChunk: (chunk: string) => {
@@ -997,14 +1012,16 @@ export const ChatView: React.FC<ChatViewProps> = ({
             console.error('Continue streaming error', err);
             alert(err.message || 'Error communicating with AI router.');
           },
-          onComplete: (fullText: string) => {
+          onComplete: (fullText: string, _tokenEst?: number, thought?: string) => {
             accumulated = fullText;
+            if (thought) capturedThought = thought;
           }
         }
       );
 
       setIsThinking(false);
-      const targetText = (accumulated || streamingChunk).trim();
+      const parsedTarget = extractThoughtAndContent(accumulated || streamingChunk, capturedThought);
+      const targetText = parsedTarget.content.trim();
       if (!targetText) {
         console.warn('Empty continue response received, omitting update');
         setStreamingChunk('');
@@ -1024,7 +1041,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
         if (isLastChar) {
           const updatedLast: ChatMessage = {
             ...lastMsg,
-            content: `${lastMsg.content.trim()}\n\n${targetText}`
+            content: `${lastMsg.content.trim()}\n\n${targetText}`,
+            thought: parsedTarget.thought || lastMsg.thought
           };
           finalMessages = [...messages.slice(0, lastIdx), updatedLast];
         } else {
@@ -1035,6 +1053,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
             senderId: character.id,
             senderRole: 'assistant',
             content: targetText,
+            thought: parsedTarget.thought,
             timestamp: 'Today at ' + new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
           };
           finalMessages = [...messages, assistantMsg];
@@ -1893,11 +1912,44 @@ export const ChatView: React.FC<ChatViewProps> = ({
                       <div
                         className={`${fontSizeClass} leading-relaxed mt-1 whitespace-pre-wrap selection:bg-purple-600/40`}
                       >
-                        {renderRoleplayText(
-                          msg.content,
-                          isUser,
-                          effectivePersona?.name || msg.personaName || currentUser.displayName
-                        )}
+                        {(() => {
+                          const parsed = !isUser
+                            ? extractThoughtAndContent(msg.content, msg.thought)
+                            : { thought: undefined, content: msg.content };
+                          const hasThought = Boolean(parsed.thought);
+                          const isThoughtOpen = openThoughtMsgIds[msg.id];
+
+                          return (
+                            <>
+                              {hasThought && (
+                                <div className="mb-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleMessageThought(msg.id)}
+                                    className="text-[11px] font-mono flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-purple-950/40 hover:bg-purple-900/50 text-purple-300 border border-purple-500/30 transition-all cursor-pointer shadow-sm active:scale-95"
+                                    title="Toggle AI internal reasoning / thinking process"
+                                  >
+                                    <Sparkles className="w-3 h-3 text-purple-400" />
+                                    <span>{isThoughtOpen ? 'Hide Internal Reasoning' : 'View Internal Reasoning'}</span>
+                                  </button>
+                                  {isThoughtOpen && (
+                                    <div className="mt-1.5 p-3 rounded-xl bg-[#0e111a]/95 border border-purple-500/25 text-neutral-300 text-xs font-sans leading-relaxed whitespace-pre-wrap animate-fade-in shadow-inner max-h-72 overflow-y-auto">
+                                      <div className="text-[10px] uppercase font-bold text-purple-400 mb-1 tracking-wider border-b border-purple-900/30 pb-0.5">
+                                        Internal Monologue
+                                      </div>
+                                      {parsed.thought}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                              {renderRoleplayText(
+                                parsed.content,
+                                isUser,
+                                effectivePersona?.name || msg.personaName || currentUser.displayName
+                              )}
+                            </>
+                          );
+                        })()}
                       </div>
                     )}
 
