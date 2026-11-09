@@ -55,10 +55,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <div className="flex flex-col w-full">
         <div
           onClick={() => onNavigate('home')}
-          className="h-16 px-5 flex items-center gap-3 border-b border-[#1b1e28] cursor-pointer hover:bg-neutral-900/40 transition-colors"
+          className="h-16 px-5 flex items-center gap-3 border-b border-[#1b1e28] cursor-pointer hover:bg-neutral-900/40 transition-colors group"
         >
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-purple-700 to-indigo-600 flex items-center justify-center text-white font-black text-base shadow-md shadow-purple-900/30">
-            W
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center p-1.5 shadow-md shadow-purple-900/30 group-hover:scale-105 transition-transform">
+            <img
+              src="/warden-cat-logo.png"
+              alt="Warden AI"
+              className="w-full h-full object-contain filter drop-shadow-sm"
+            />
           </div>
           <span className="text-base font-bold text-white tracking-tight">Warden AI</span>
         </div>

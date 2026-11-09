@@ -177,3 +177,4 @@ export const AppSplashScreen: React.FC<AppSplashScreenProps> = ({
     </AnimatePresence>
   );
 };
+

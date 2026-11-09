@@ -79,8 +79,12 @@ export const SlideOverDrawer: React.FC<SlideOverDrawerProps> = ({
               onClick={() => handleNav('home')}
               className="flex items-center gap-2 cursor-pointer active:scale-95 transition-transform"
             >
-              <div className="w-7 h-7 rounded-md bg-gradient-to-tr from-purple-700 to-indigo-600 flex items-center justify-center text-white font-black text-sm">
-                W
+              <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center p-1 shadow-sm">
+                <img
+                  src="/warden-cat-logo.png"
+                  alt="Warden AI"
+                  className="w-full h-full object-contain filter drop-shadow-sm"
+                />
               </div>
               <span className="text-base font-bold text-white tracking-tight">
                 <span className="text-purple-400">W</span>arden AI

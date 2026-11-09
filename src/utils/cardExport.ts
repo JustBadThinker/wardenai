@@ -156,7 +156,7 @@ export function injectCharacterMetadataIntoPng(pngBytes: Uint8Array, charaData: 
  */
 export async function generateSillyTavernPngCard(character: Character): Promise<Blob> {
   const cardData = buildCharacterCardV2(character);
-  const imgUrl = character.avatarUrl || character.coverUrl;
+  const imgUrl = character.avatarUrl || character.coverUrl || '';
 
   // Render to canvas to produce a clean standard PNG
   return new Promise((resolve, reject) => {
@@ -181,7 +181,7 @@ export async function generateSillyTavernPngCard(character: Character): Promise<
             const arrayBuf = await blob.arrayBuffer();
             const pngBytes = new Uint8Array(arrayBuf);
             const injected = injectCharacterMetadataIntoPng(pngBytes, cardData);
-            resolve(new Blob([injected.buffer], { type: 'image/png' }));
+            resolve(new Blob([injected.buffer as ArrayBuffer], { type: 'image/png' }));
           } catch (err) {
             reject(err);
           }
@@ -210,7 +210,7 @@ export async function generateSillyTavernPngCard(character: Character): Promise<
           if (!b) return reject(new Error('Fallback blob failed'));
           const arr = await b.arrayBuffer();
           const injected = injectCharacterMetadataIntoPng(new Uint8Array(arr), cardData);
-          resolve(new Blob([injected.buffer], { type: 'image/png' }));
+          resolve(new Blob([injected.buffer as ArrayBuffer], { type: 'image/png' }));
         }, 'image/png');
       } else {
         reject(new Error('Failed to load character image'));
