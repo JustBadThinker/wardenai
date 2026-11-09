@@ -26,13 +26,19 @@ import {
   Activity,
   Save,
   Coins,
-  Calculator
+  Calculator,
+  Lock,
+  Unlock,
+  Download,
+  Sparkles,
+  Key
 } from 'lucide-react';
 import { User, ProviderConfig, GlobalChatBackground, TokenOptimizerLevel, TokenPriceConfig } from '../types';
 import { storageService } from '../services/storageService';
 import { aiProviderService } from '../services/aiProviderService';
 import { TokenOptimizerSlider } from '../components/common/TokenOptimizerSlider';
 import { tokenPriceService, TOKEN_PRICE_PRESETS } from '../services/tokenPriceService';
+import { WardenVaultModal } from '../components/modals/WardenVaultModal';
 
 interface SettingsViewProps {
   currentUser: User;
@@ -125,6 +131,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 }) => {
   const [activeSection, setActiveSection] = useState<SettingsSection>('appearance');
   const [appearanceTab, setAppearanceTab] = useState<AppearanceTab>('theme');
+  const [vaultModalState, setVaultModalState] = useState<{ isOpen: boolean; mode: 'export' | 'import' }>({
+    isOpen: false,
+    mode: 'export'
+  });
   const [activeTheme, setActiveTheme] = useState<string>(() => {
     try {
       return localStorage.getItem('warden_app_theme') || 'default';
@@ -1095,10 +1105,59 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </button>
               )}
 
-              <div className="p-4 bg-[#12151e] border border-[#1b1e28] rounded-xl space-y-3">
-                <h4 className="text-xs font-bold text-white">Local Device Backup & Restore</h4>
-                <p className="text-[11px] text-neutral-400">
-                  Since Warden AI runs locally without cloud accounts, you can export or restore all your characters, chats, personas, and lorebooks as a single JSON file.
+              {/* Primary Encrypted .warden Vault Backup & Restore Card */}
+              <div className="p-4 sm:p-5 bg-gradient-to-br from-[#121624] via-[#101420] to-[#0d1018] border border-purple-500/40 rounded-2xl shadow-xl space-y-3 relative overflow-hidden">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-xl bg-purple-600/25 border border-purple-500/40 flex items-center justify-center text-purple-300 shrink-0">
+                      <Lock className="w-4 h-4 text-purple-400" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-extrabold text-white flex items-center gap-2">
+                        <span>Encrypted Warden Vault</span>
+                        <span className="px-2 py-0.5 rounded-full bg-purple-950/80 text-purple-300 border border-purple-500/40 text-[10px] font-mono font-bold">
+                          .warden
+                        </span>
+                      </h4>
+                      <p className="text-[11px] text-purple-300/80 mt-0.5">
+                        AES-GCM-256 encrypted native backup & safe non-destructive merge
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <p className="text-xs text-neutral-300 leading-relaxed">
+                  Safely export or restore all your <strong>personas</strong> (merged non-destructively without deleting existing ones), <strong>conversations & complete message history</strong>, <strong>custom bot prompt rules</strong>, characters, and lorebooks. Provider API credentials are strictly excluded.
+                </p>
+
+                <div className="flex flex-wrap items-center gap-2.5 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setVaultModalState({ isOpen: true, mode: 'export' })}
+                    className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-purple-600/35 transition-all cursor-pointer active:scale-95"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Export .warden Vault</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setVaultModalState({ isOpen: true, mode: 'import' })}
+                    className="px-4 py-2.5 rounded-xl bg-[#161a26] hover:bg-[#1f2538] text-purple-200 border border-purple-500/40 text-xs font-bold flex items-center gap-2 transition-all cursor-pointer active:scale-95 shadow-sm"
+                  >
+                    <Upload className="w-3.5 h-3.5 text-purple-400" />
+                    <span>Import & Merge .warden</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Secondary Legacy Unencrypted JSON Backup */}
+              <div className="p-4 bg-[#12151e] border border-[#1b1e28] rounded-xl space-y-2.5">
+                <h4 className="text-xs font-bold text-neutral-300 flex items-center gap-2">
+                  <span>Legacy Raw JSON Backup (Unencrypted)</span>
+                </h4>
+                <p className="text-[11px] text-neutral-400 leading-relaxed">
+                  Export or import unencrypted raw JSON files for manual inspection or external tool scripting.
                 </p>
                 <div className="flex flex-wrap items-center gap-2.5 pt-1">
                   <button
@@ -1116,13 +1175,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       a.download = `warden_ai_backup_${new Date().toISOString().split('T')[0]}.json`;
                       a.click();
                     }}
-                    className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-colors cursor-pointer"
+                    className="px-3.5 py-1.5 rounded-lg bg-[#181c28] hover:bg-[#202536] text-neutral-300 text-xs font-semibold border border-[#222736] transition-colors cursor-pointer"
                   >
-                    Export Backup (.json)
+                    Export .json
                   </button>
 
-                  <label className="px-4 py-2 rounded-xl bg-[#181c28] hover:bg-[#202536] text-neutral-200 text-xs font-semibold border border-[#222736] transition-colors cursor-pointer">
-                    <span>Import Backup (.json)</span>
+                  <label className="px-3.5 py-1.5 rounded-lg bg-[#181c28] hover:bg-[#202536] text-neutral-300 text-xs font-semibold border border-[#222736] transition-colors cursor-pointer">
+                    <span>Import .json</span>
                     <input
                       type="file"
                       accept=".json,application/json"
@@ -1172,6 +1231,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           )}
         </div>
       </div>
+
+      {/* Warden Encrypted Vault Modal (.warden) */}
+      <WardenVaultModal
+        isOpen={vaultModalState.isOpen}
+        onClose={() => setVaultModalState(s => ({ ...s, isOpen: false }))}
+        userId={currentUser.id}
+        initialMode={vaultModalState.mode}
+      />
     </div>
   );
 };
