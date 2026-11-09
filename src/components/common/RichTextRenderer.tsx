@@ -56,15 +56,15 @@ const SafeImage: React.FC<{
 
   if (!isSafeUrl(src) || hasError) {
     return (
-      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-neutral-900 border border-neutral-800 text-[11px] text-neutral-400 my-1">
-        <ImageIcon className="w-3.5 h-3.5 text-neutral-500" />
-        <span>[Image unavailable: {alt || 'Media'}]</span>
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-neutral-900 border border-neutral-800 text-[11px] text-neutral-400 my-1 break-all">
+        <ImageIcon className="w-3.5 h-3.5 text-neutral-500 shrink-0" />
+        <span className="truncate max-w-[260px]">[Image unavailable: {alt || 'Media'}]</span>
       </span>
     );
   }
 
   return (
-    <figure className="my-3 block w-full">
+    <figure className="my-3 block w-full overflow-hidden">
       <div
         onClick={() => onZoom && onZoom(src, alt)}
         className="group relative inline-block max-w-full overflow-hidden rounded-xl border border-purple-500/25 bg-[#0c0e14]/80 shadow-lg cursor-pointer transition-all duration-300 hover:border-purple-500/60 hover:shadow-purple-900/20"
@@ -78,6 +78,7 @@ const SafeImage: React.FC<{
           src={src}
           alt={alt || 'Scene illustration'}
           loading="lazy"
+          referrerPolicy="no-referrer"
           onLoad={() => setIsLoaded(true)}
           onError={() => setHasError(true)}
           className={`max-w-full max-h-[460px] w-auto object-cover rounded-xl transition-all duration-500 ease-out group-hover:scale-[1.015] ${
@@ -111,9 +112,9 @@ export const RichTextRenderer: React.FC<RichTextRendererProps> = ({
 
   return (
     <>
-      <div className={`space-y-3 ${className}`}>
+      <div className={`space-y-3 break-words ${className}`}>
         {paragraphs.map((para, pIdx) => (
-          <div key={pIdx} className="leading-relaxed whitespace-pre-wrap">
+          <div key={pIdx} className="leading-relaxed whitespace-pre-wrap break-words">
             {renderInlineTokens(para, allowImages, (src, alt) => setZoomedImage({ src, alt }))}
           </div>
         ))}

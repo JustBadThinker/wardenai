@@ -61,6 +61,7 @@ import { TokenOptimizerSlider } from '../components/common/TokenOptimizerSlider'
 import { tokenOptimizerService } from '../services/tokenOptimizerService';
 import { tokenPriceService, DEFAULT_USD_TO_IDR_RATE } from '../services/tokenPriceService';
 import { TokenCounterModal } from '../components/common/TokenCounterModal';
+import { RichTextRenderer } from '../components/common/RichTextRenderer';
 
 interface ChatViewProps {
   conversation: Conversation;
@@ -3353,7 +3354,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 {currentPersona?.appearance && (
                   <div className="space-y-1">
                     <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider">Appearance</span>
-                    <p className="text-xs text-neutral-300 leading-relaxed bg-[#0a0c14] p-3 rounded-xl border border-[#1b202e] whitespace-pre-wrap">
+                    <p className="text-xs text-neutral-300 leading-relaxed bg-[#0a0c14] p-3 rounded-xl border border-[#1b202e] whitespace-pre-wrap break-words">
                       {currentPersona.appearance}
                     </p>
                   </div>
@@ -3362,7 +3363,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 {currentPersona?.roleInstructions && (
                   <div className="space-y-1">
                     <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider">Role & Directives</span>
-                    <p className="text-xs text-neutral-300 leading-relaxed bg-[#0a0c14] p-3 rounded-xl border border-[#1b202e] whitespace-pre-wrap">
+                    <p className="text-xs text-neutral-300 leading-relaxed bg-[#0a0c14] p-3 rounded-xl border border-[#1b202e] whitespace-pre-wrap break-words">
                       {currentPersona.roleInstructions}
                     </p>
                   </div>
@@ -3415,9 +3416,12 @@ export const ChatView: React.FC<ChatViewProps> = ({
                   {(character.shortDescription || character.background) && (
                     <div className="space-y-1">
                       <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider">Description & Backstory</span>
-                      <p className="text-xs text-neutral-300 leading-relaxed bg-[#0a0c14] p-3 rounded-xl border border-[#1b202e] whitespace-pre-wrap">
-                        {character.background || character.shortDescription}
-                      </p>
+                      <div className="text-xs text-neutral-300 leading-relaxed bg-[#0a0c14] p-3 rounded-xl border border-[#1b202e] overflow-hidden break-words">
+                        <RichTextRenderer
+                          content={character.background || character.shortDescription}
+                          allowImages={true}
+                        />
+                      </div>
                     </div>
                   )}
 
@@ -3425,9 +3429,12 @@ export const ChatView: React.FC<ChatViewProps> = ({
                   {character.personality && (
                     <div className="space-y-1">
                       <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider">Personality</span>
-                      <p className="text-xs text-neutral-300 leading-relaxed bg-[#0a0c14] p-3 rounded-xl border border-[#1b202e] whitespace-pre-wrap">
-                        {character.personality}
-                      </p>
+                      <div className="text-xs text-neutral-300 leading-relaxed bg-[#0a0c14] p-3 rounded-xl border border-[#1b202e] overflow-hidden break-words">
+                        <RichTextRenderer
+                          content={character.personality}
+                          allowImages={true}
+                        />
+                      </div>
                     </div>
                   )}
 
