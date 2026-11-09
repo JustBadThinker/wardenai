@@ -32,49 +32,67 @@ export const AppSplashScreen: React.FC<AppSplashScreenProps> = ({
   return (
     <motion.div
       key="warden-splash-screen"
-      initial={{ opacity: 1 }}
-      animate={{ opacity: 1 }}
+      initial={{ opacity: 1, scale: 1 }}
+      animate={{ opacity: 1, scale: 1 }}
       exit={{
         opacity: 0,
-        scale: 1.08,
+        scale: 0.84,
         filter: 'blur(10px)',
-        transition: { duration: 0.42, ease: [0.16, 1, 0.3, 1] }
+        transition: { duration: 0.45, ease: [0.16, 1, 0.3, 1] }
       }}
       onClick={onComplete}
       className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-[#08090d] select-none cursor-pointer overflow-hidden transform-gpu"
       style={{ willChange: 'transform, opacity, filter' }}
     >
-          {/* ── Ambient Radial Glow Bloom (Pulsing behind icon) ── */}
-          <motion.div
-            initial={{ scale: 0.6, opacity: 0 }}
-            animate={{
-              scale: [0.6, 1.25, 1.1],
-              opacity: [0, 0.55, 0.4]
-            }}
-            transition={{
-              duration: 0.9,
-              ease: [0.16, 1, 0.3, 1]
-            }}
-            className="absolute w-80 h-80 sm:w-96 sm:h-96 rounded-full bg-gradient-to-tr from-purple-600/35 via-indigo-500/30 to-cyan-500/25 blur-3xl pointer-events-none -z-10"
-          />
+      {/* ── Ambient Radial Glow Bloom (Pulsing behind icon) ── */}
+      <motion.div
+        initial={{ scale: 0.6, opacity: 0 }}
+        animate={{
+          scale: [0.6, 1.25, 1.1],
+          opacity: [0, 0.55, 0.4]
+        }}
+        exit={{
+          scale: 0.4,
+          opacity: 0,
+          transition: { duration: 0.35 }
+        }}
+        transition={{
+          duration: 0.9,
+          ease: [0.16, 1, 0.3, 1]
+        }}
+        className="absolute w-80 h-80 sm:w-96 sm:h-96 rounded-full bg-gradient-to-tr from-purple-600/35 via-indigo-500/30 to-cyan-500/25 blur-3xl pointer-events-none -z-10"
+      />
 
-          {/* ── Secondary Subtle Cyan/Blue Aura ── */}
-          <motion.div
-            initial={{ scale: 0.8, opacity: 0 }}
-            animate={{
-              scale: [0.8, 1.3, 1.15],
-              opacity: [0, 0.35, 0.2]
-            }}
-            transition={{
-              duration: 0.95,
-              delay: 0.08,
-              ease: [0.16, 1, 0.3, 1]
-            }}
-            className="absolute w-64 h-64 rounded-full bg-blue-500/20 blur-2xl pointer-events-none -z-10"
-          />
+      {/* ── Secondary Subtle Cyan/Blue Aura ── */}
+      <motion.div
+        initial={{ scale: 0.8, opacity: 0 }}
+        animate={{
+          scale: [0.8, 1.3, 1.15],
+          opacity: [0, 0.35, 0.2]
+        }}
+        exit={{
+          scale: 0.5,
+          opacity: 0,
+          transition: { duration: 0.35 }
+        }}
+        transition={{
+          duration: 0.95,
+          delay: 0.08,
+          ease: [0.16, 1, 0.3, 1]
+        }}
+        className="absolute w-64 h-64 rounded-full bg-blue-500/20 blur-2xl pointer-events-none -z-10"
+      />
 
-          {/* ── Central Icon Container with Spring Physics ── */}
-          <div className="relative flex flex-col items-center">
+      {/* ── Central Icon Container with Spring Physics ── */}
+      <motion.div
+        exit={{
+          scale: 0.72,
+          opacity: 0,
+          y: -8,
+          transition: { duration: 0.38, ease: [0.16, 1, 0.3, 1] }
+        }}
+        className="relative flex flex-col items-center"
+      >
             {/* Ethereal Glow Ring Halo */}
             <motion.div
               initial={{ scale: 0.8, opacity: 0, rotate: 0 }}
@@ -156,7 +174,7 @@ export const AppSplashScreen: React.FC<AppSplashScreenProps> = ({
               }}
               className="h-0.5 mt-5 bg-gradient-to-r from-purple-500 via-indigo-400 to-blue-500 rounded-full shadow-[0_0_12px_rgba(168,85,247,0.7)]"
             />
-          </div>
+          </motion.div>
         </motion.div>
   );
 };

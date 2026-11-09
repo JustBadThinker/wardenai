@@ -852,7 +852,14 @@ export default function App() {
   return (
     <div className="h-[100dvh] max-h-[100dvh] w-full bg-neutral-950 text-neutral-100 flex flex-col antialiased selection:bg-indigo-600/30 selection:text-indigo-200 overflow-hidden fixed inset-0">
       {/* Desktop Persistent Sidebar + Main Viewport Layout */}
-      <div className="flex flex-1 h-full min-h-0 overflow-hidden">
+      <motion.div
+        animate={{
+          opacity: isAppBooting ? 0 : 1,
+          scale: isAppBooting ? 0.96 : 1
+        }}
+        transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+        className="flex flex-1 h-full min-h-0 overflow-hidden transform-gpu"
+      >
         <Sidebar
           currentUser={currentUser}
           activePersona={activePersona}
@@ -1416,10 +1423,10 @@ export default function App() {
             </AnimatePresence>
           </main>
         </div>
-      </div>
+      </motion.div>
 
-      {/* Mobile Bottom Navigation Bar - strictly hidden in active chat room */}
-      {activeView !== 'chat' && (
+      {/* Mobile Bottom Navigation Bar - strictly hidden in active chat room or during boot */}
+      {activeView !== 'chat' && !isAppBooting && (
         <MobileBottomBar
           activeView={activeView}
           onNavigate={navigateWithDirection}
