@@ -41,6 +41,27 @@ export const CharacterCard: React.FC<CharacterCardProps> = ({
   const [revealed, setRevealed] = useState(false);
   const shouldBlur = isMature && blurNsfw && !revealed;
 
+  // React Hooks must ALWAYS be called unconditionally at top of component (Rule of Hooks)
+  const [imgSrc, setImgSrc] = useState(character.avatarUrl || character.coverUrl || '');
+  const [imgError, setImgError] = useState(false);
+
+  useEffect(() => {
+    setImgSrc(character.avatarUrl || character.coverUrl || '');
+    setImgError(false);
+  }, [character.avatarUrl, character.coverUrl]);
+
+  const handleImgError = () => {
+    if (imgSrc === character.avatarUrl && character.coverUrl && character.coverUrl !== character.avatarUrl) {
+      setImgSrc(character.coverUrl);
+    } else if (imgSrc.includes('card.webp')) {
+      setImgSrc(imgSrc.replace('card.webp', 'thumb.webp'));
+    } else if (imgSrc.includes('thumb.webp')) {
+      setImgSrc(imgSrc.replace('thumb.webp', 'avatar.webp'));
+    } else {
+      setImgError(true);
+    }
+  };
+
   const formatCount = (num: number) => {
     if (!num) return '0';
     if (num >= 1000) {
@@ -61,15 +82,22 @@ export const CharacterCard: React.FC<CharacterCardProps> = ({
         className="group relative bg-[#12151e] hover:bg-[#161a26] border border-[#1b1e28] hover:border-purple-500/40 rounded-xl p-3 flex items-center gap-3.5 cursor-pointer transition-all duration-200 shadow-sm hover:shadow-purple-950/20"
       >
         <div className="relative w-14 h-14 rounded-lg overflow-hidden shrink-0 bg-[#0c0e14] border border-[#1f2433]">
-          <img
-            src={character.avatarUrl}
-            alt={character.name}
-            referrerPolicy="no-referrer"
-            className={`w-full h-full object-cover transition-transform duration-300 group-hover:scale-105 ${
-              shouldBlur ? 'blur-md' : ''
-            }`}
-            loading="lazy"
-          />
+          {!imgError && imgSrc ? (
+            <img
+              src={imgSrc}
+              alt={character.name}
+              referrerPolicy="no-referrer"
+              className={`w-full h-full object-cover transition-transform duration-300 group-hover:scale-105 ${
+                shouldBlur ? 'blur-md' : ''
+              }`}
+              loading="lazy"
+              onError={handleImgError}
+            />
+          ) : (
+            <div className="w-full h-full bg-purple-950/40 flex items-center justify-center font-bold text-purple-300">
+              {character.name.charAt(0)}
+            </div>
+          )}
         </div>
 
         <div className="flex-1 min-w-0">
@@ -101,26 +129,6 @@ export const CharacterCard: React.FC<CharacterCardProps> = ({
       </div>
     );
   }
-
-  const [imgSrc, setImgSrc] = useState(character.avatarUrl || character.coverUrl || '');
-  const [imgError, setImgError] = useState(false);
-
-  useEffect(() => {
-    setImgSrc(character.avatarUrl || character.coverUrl || '');
-    setImgError(false);
-  }, [character.avatarUrl, character.coverUrl]);
-
-  const handleImgError = () => {
-    if (imgSrc === character.avatarUrl && character.coverUrl && character.coverUrl !== character.avatarUrl) {
-      setImgSrc(character.coverUrl);
-    } else if (imgSrc.includes('card.webp')) {
-      setImgSrc(imgSrc.replace('card.webp', 'thumb.webp'));
-    } else if (imgSrc.includes('thumb.webp')) {
-      setImgSrc(imgSrc.replace('thumb.webp', 'avatar.webp'));
-    } else {
-      setImgError(true);
-    }
-  };
 
   // Standard Discord/Warden Community Card (matches Panel 1 & Panel 5 exactly)
   return (
