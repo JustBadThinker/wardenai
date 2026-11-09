@@ -312,15 +312,38 @@ export function exportTranscriptJson(
 // 4. Download Utility Helper
 // ============================================================================
 
-export function downloadFile(filename: string, content: string | Blob, mimeType: string = 'text/plain') {
+export async function downloadFile(filename: string, content: string | Blob, mimeType: string = 'text/plain') {
   const blob = typeof content === 'string' ? new Blob([content], { type: mimeType }) : content;
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+  // On Android/mobile WebViews, anchor clicks on blob: URLs fail silently.
+  // Using Web Share API lets the user save directly to Downloads or Google Drive via Android's native system sheet.
+  if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+    try {
+      const file = new File([blob], filename, { type: mimeType });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: filename
+        });
+        return;
+      }
+    } catch (err: any) {
+      if (err?.name === 'AbortError') return;
+      console.warn('[downloadFile] Native file share failed, falling back to anchor:', err);
+    }
+  }
+
+  try {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  } catch (err) {
+    console.warn('[downloadFile] Anchor download failed:', err);
+  }
 }
 

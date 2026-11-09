@@ -80,7 +80,7 @@ export class WardenVaultService {
   public async exportVault(
     userId: string,
     password?: string
-  ): Promise<{ blob: Blob; filename: string; stats: VaultExportStats }> {
+  ): Promise<{ blob: Blob; filename: string; stats: VaultExportStats; rawContent: string }> {
     const hasCustomPassword = Boolean(password && password.trim().length > 0);
     const effectivePass = hasCustomPassword ? password!.trim() : DEFAULT_VAULT_KEY;
 
@@ -137,7 +137,7 @@ export class WardenVaultService {
     const dateStr = new Date().toISOString().split('T')[0];
     const filename = `warden_vault_backup_${dateStr}.warden`;
 
-    return { blob, filename, stats };
+    return { blob, filename, stats, rawContent: envelopeString };
   }
 
   /**
@@ -414,17 +414,59 @@ export class WardenVaultService {
   }
 
   /**
-   * Triggers download of the .warden file in the user's browser.
+   * Downloads or shares the .warden backup file across desktop and Android mobile
    */
-  public downloadVaultFile(blob: Blob, filename: string): void {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+  public async downloadVaultFile(
+    blob: Blob,
+    filename: string,
+    rawContent?: string
+  ): Promise<{ method: 'share' | 'download' | 'clipboard' }> {
+    // 1. Android & Mobile Web Share API:
+    // Android WebViews do NOT support downloading blob: URLs via <a> tags.
+    // navigator.share with File invokes Android's native system share sheet ("Save to Downloads", "Google Drive", etc.)
+    if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+      try {
+        const file = new File([blob], filename, { type: 'application/octet-stream' });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            files: [file],
+            title: filename,
+            text: 'Warden AI Encrypted Backup Vault'
+          });
+          return { method: 'share' };
+        }
+      } catch (err: any) {
+        if (err?.name === 'AbortError') {
+          return { method: 'share' };
+        }
+        console.warn('[WardenVaultService] Native file share failed, trying anchor fallback:', err);
+      }
+    }
+
+    // 2. Standard Browser anchor download fallback (Desktop Chrome, Firefox, Edge, Safari)
+    try {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+      return { method: 'download' };
+    } catch (err) {
+      console.warn('[WardenVaultService] Anchor download failed:', err);
+    }
+
+    // 3. Fallback: Copy to clipboard if available
+    if (rawContent && typeof navigator !== 'undefined' && navigator.clipboard) {
+      try {
+        await navigator.clipboard.writeText(rawContent);
+        return { method: 'clipboard' };
+      } catch {}
+    }
+
+    return { method: 'download' };
   }
 }
 

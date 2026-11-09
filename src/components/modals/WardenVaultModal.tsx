@@ -23,7 +23,9 @@ import {
   User as UserIcon,
   BookOpen,
   Sliders,
-  CheckCircle2
+  CheckCircle2,
+  Copy,
+  Share2
 } from 'lucide-react';
 import {
   wardenVaultService,
@@ -55,8 +57,13 @@ export const WardenVaultModal: React.FC<WardenVaultModalProps> = ({
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [exportSuccess, setExportSuccess] = useState<VaultExportStats | null>(null);
+  const [exportedRaw, setExportedRaw] = useState<string | null>(null);
+  const [exportedBlob, setExportedBlob] = useState<{ blob: Blob; filename: string } | null>(null);
+  const [hasCopiedBackup, setHasCopiedBackup] = useState(false);
 
   // Import State
+  const [isPasteMode, setIsPasteMode] = useState(false);
+  const [pastedBackupText, setPastedBackupText] = useState('');
   const [importFileContent, setImportFileContent] = useState<string | null>(null);
   const [importFileName, setImportFileName] = useState<string>('');
   const [hasCustomPassword, setHasCustomPassword] = useState(false);
@@ -71,6 +78,11 @@ export const WardenVaultModal: React.FC<WardenVaultModalProps> = ({
       setMode(initialMode);
       setExportPassword('');
       setExportSuccess(null);
+      setExportedRaw(null);
+      setExportedBlob(null);
+      setHasCopiedBackup(false);
+      setIsPasteMode(false);
+      setPastedBackupText('');
       setImportFileContent(null);
       setImportFileName('');
       setImportPassword('');
@@ -97,16 +109,69 @@ export const WardenVaultModal: React.FC<WardenVaultModalProps> = ({
     setExportSuccess(null);
     setExportError(null);
     try {
-      const { blob, filename, stats } = await wardenVaultService.exportVault(
+      const { blob, filename, stats, rawContent } = await wardenVaultService.exportVault(
         userId,
         exportPassword.trim() || undefined
       );
-      wardenVaultService.downloadVaultFile(blob, filename);
+      setExportedRaw(rawContent);
+      setExportedBlob({ blob, filename });
+      await wardenVaultService.downloadVaultFile(blob, filename, rawContent);
       setExportSuccess(stats);
     } catch (err: any) {
       setExportError(err?.message || 'Export failed.');
     } finally {
       setIsExporting(false);
+    }
+  };
+
+  const handleCopyBackupText = async () => {
+    if (!exportedRaw) return;
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard) {
+        await navigator.clipboard.writeText(exportedRaw);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = exportedRaw;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+      setHasCopiedBackup(true);
+      setTimeout(() => setHasCopiedBackup(false), 2500);
+    } catch (err) {
+      console.error('Failed to copy backup text:', err);
+    }
+  };
+
+  const handleShareAgain = async () => {
+    if (!exportedBlob) return;
+    await wardenVaultService.downloadVaultFile(
+      exportedBlob.blob,
+      exportedBlob.filename,
+      exportedRaw || undefined
+    );
+  };
+
+  const handlePastedTextChange = (text: string) => {
+    setPastedBackupText(text);
+    setImportError(null);
+    setImportSuccess(null);
+    const trimmed = text.trim();
+    if (!trimmed) {
+      setImportFileContent(null);
+      return;
+    }
+    const inspection = wardenVaultService.inspectVaultFile(trimmed);
+    if (!inspection.isValid) {
+      setImportError(inspection.error || 'Invalid backup text format.');
+      setHasCustomPassword(false);
+      setImportFileContent(null);
+    } else {
+      setImportFileContent(trimmed);
+      setImportFileName('Pasted Backup Text');
+      setHasCustomPassword(inspection.hasCustomPassword);
+      setImportError(null);
     }
   };
 
@@ -317,14 +382,48 @@ export const WardenVaultModal: React.FC<WardenVaultModalProps> = ({
 
               {/* Success Result Box */}
               {exportSuccess && (
-                <div className="p-3.5 rounded-xl bg-emerald-950/30 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2.5">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
-                  <div>
-                    <strong className="block text-white">Vault Encrypted & Downloaded!</strong>
-                    <span className="text-[11px] text-emerald-300/80">
-                      Exported {exportSuccess.personasCount} personas, {exportSuccess.conversationsCount} chats ({exportSuccess.messagesCount} messages), and {exportSuccess.rulesCount} custom rules.
-                    </span>
+                <div className="p-3.5 rounded-xl bg-emerald-950/30 border border-emerald-500/30 text-emerald-300 text-xs space-y-3">
+                  <div className="flex items-center gap-2.5">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+                    <div>
+                      <strong className="block text-white font-bold">Vault Encrypted Successfully!</strong>
+                      <span className="text-[11px] text-emerald-300/80">
+                        Exported {exportSuccess.personasCount} personas, {exportSuccess.conversationsCount} chats ({exportSuccess.messagesCount} messages), and {exportSuccess.rulesCount} custom rules.
+                      </span>
+                    </div>
                   </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={handleShareAgain}
+                      className="px-3 py-2 rounded-xl bg-emerald-700/80 hover:bg-emerald-600 text-white font-bold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-md"
+                    >
+                      <Share2 className="w-3.5 h-3.5" />
+                      <span>Save / Share File Again</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCopyBackupText}
+                      className="px-3 py-2 rounded-xl bg-[#1b2234] hover:bg-[#252f47] border border-white/10 text-neutral-200 hover:text-white font-bold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-md"
+                    >
+                      {hasCopiedBackup ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-emerald-400" />
+                          <span className="text-emerald-300">Copied to Clipboard!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5 text-purple-400" />
+                          <span>Copy Backup Text</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  <p className="text-[10px] text-neutral-400 leading-normal">
+                    💡 <strong>Android / Mobile note:</strong> Tap <em>Save / Share File Again</em> to choose your download location (Downloads, Files by Google, Drive), or copy the backup text to transfer anywhere.
+                  </p>
                 </div>
               )}
 
@@ -352,28 +451,96 @@ export const WardenVaultModal: React.FC<WardenVaultModalProps> = ({
           {/* ================= MODE: IMPORT ================= */}
           {mode === 'import' && (
             <div className="space-y-4">
-              {/* File Selector */}
-              <div className="space-y-1.5">
-                <label className="text-neutral-300 font-semibold block text-[11px] flex items-center gap-1.5">
-                  <FileText className="w-3.5 h-3.5 text-purple-400" />
-                  <span>Select Encrypted .warden Vault File:</span>
-                </label>
-                <label className="w-full p-4 border-2 border-dashed border-[#262c3e] hover:border-purple-500/50 rounded-2xl flex flex-col items-center justify-center gap-2 cursor-pointer bg-[#12151e]/50 hover:bg-[#141824] transition-all">
-                  <Upload className="w-6 h-6 text-purple-400" />
-                  <span className="text-xs font-bold text-white">
-                    {importFileName || 'Click to browse or drop .warden file'}
-                  </span>
-                  <span className="text-[10px] text-neutral-400 font-mono">
-                    Supported: .warden vault backups
-                  </span>
-                  <input
-                    type="file"
-                    accept=".warden,application/octet-stream,application/json"
-                    className="hidden"
-                    onChange={handleFileSelected}
-                  />
-                </label>
+              {/* Import Method Toggle: File vs Text Paste */}
+              <div className="flex bg-[#12151e] p-1 rounded-xl border border-[#202535]">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsPasteMode(false);
+                    setImportError(null);
+                  }}
+                  className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                    !isPasteMode
+                      ? 'bg-purple-600 text-white shadow-sm'
+                      : 'text-neutral-400 hover:text-white'
+                  }`}
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>File (.warden)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsPasteMode(true);
+                    setImportError(null);
+                  }}
+                  className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                    isPasteMode
+                      ? 'bg-purple-600 text-white shadow-sm'
+                      : 'text-neutral-400 hover:text-white'
+                  }`}
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>Paste Backup Text</span>
+                </button>
               </div>
+
+              {!isPasteMode ? (
+                /* File Selector */
+                <div className="space-y-1.5">
+                  <label className="text-neutral-300 font-semibold block text-[11px] flex items-center gap-1.5">
+                    <FileText className="w-3.5 h-3.5 text-purple-400" />
+                    <span>Select Encrypted .warden Vault File:</span>
+                  </label>
+                  <label className="w-full p-4 border-2 border-dashed border-[#262c3e] hover:border-purple-500/50 rounded-2xl flex flex-col items-center justify-center gap-2 cursor-pointer bg-[#12151e]/50 hover:bg-[#141824] transition-all">
+                    <Upload className="w-6 h-6 text-purple-400" />
+                    <span className="text-xs font-bold text-white">
+                      {importFileName || 'Click to browse or drop .warden file'}
+                    </span>
+                    <span className="text-[10px] text-neutral-400 font-mono">
+                      Supported: .warden vault backups
+                    </span>
+                    <input
+                      type="file"
+                      accept=".warden,application/octet-stream,application/json,text/plain"
+                      className="hidden"
+                      onChange={handleFileSelected}
+                    />
+                  </label>
+                </div>
+              ) : (
+                /* Paste Text Input */
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-neutral-300 font-semibold block text-[11px] flex items-center gap-1.5">
+                      <Copy className="w-3.5 h-3.5 text-purple-400" />
+                      <span>Paste Encrypted Backup Text:</span>
+                    </label>
+                    {pastedBackupText && (
+                      <button
+                        type="button"
+                        onClick={() => handlePastedTextChange('')}
+                        className="text-[10px] text-neutral-400 hover:text-rose-400 transition-colors"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                  <textarea
+                    rows={4}
+                    value={pastedBackupText}
+                    onChange={e => handlePastedTextChange(e.target.value)}
+                    placeholder='Paste the entire encrypted backup text here (starts with {"magic":"WARDEN_ENCRYPTED_VAULT"...)...'
+                    className="w-full bg-[#12151e] border border-[#222736] focus:border-purple-500 rounded-xl p-3 text-[11px] font-mono text-white placeholder-neutral-500 outline-none transition-colors resize-none"
+                  />
+                  {importFileContent && isPasteMode && (
+                    <p className="text-[10px] text-emerald-400 flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3" />
+                      <span>Valid backup payload recognized.</span>
+                    </p>
+                  )}
+                </div>
+              )}
 
               {/* Merge Guarantee Notice */}
               <div className="p-3 rounded-xl bg-[#141824] border border-[#1e2334] text-[11px] text-neutral-300 leading-relaxed flex items-start gap-2.5">
