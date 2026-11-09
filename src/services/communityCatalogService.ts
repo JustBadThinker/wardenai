@@ -185,7 +185,11 @@ class CommunityCatalogService {
         creatorName: creator,
         avatarUrl:
           node.avatar_url ||
+          (fullPath && !fullPath.startsWith('chub-') && fullPath.includes('/')
+            ? `https://avatars.charhub.io/avatars/${fullPath}/avatar.webp`
+            : '') ||
           node.max_res_url ||
+          node.avatar ||
           'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=500',
         shortDescription: rawDesc.slice(0, 220),
         isNsfw: Boolean(node.nsfw_image || (node.topics || []).includes('NSFW')),
@@ -321,7 +325,14 @@ class CommunityCatalogService {
         name: node?.name || def?.name || 'Character',
         chatName: def?.name || node?.name || '',
         creatorName: creator,
-        avatarUrl: node?.avatar_url || node?.max_res_url || 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=500',
+        avatarUrl:
+          node?.avatar_url ||
+          (fullPath && !fullPath.startsWith('chub-') && fullPath.includes('/')
+            ? `https://avatars.charhub.io/avatars/${fullPath}/avatar.webp`
+            : '') ||
+          node?.max_res_url ||
+          node?.avatar ||
+          'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=500',
         shortDescription: String(node?.tagline || node?.description || '').replace(/<[^>]*>/g, ' ').trim().slice(0, 260),
         isNsfw: Boolean(node?.nsfw_image || (node?.topics || []).includes('NSFW')),
         totalTokens: Number(node?.nTokens) || 850,

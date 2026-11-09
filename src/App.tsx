@@ -94,8 +94,38 @@ export default function App() {
     setActiveView(nextView);
   };
 
+  // Helper to detect if touch originates within scrollable horizontal elements or tabs (BUG #6)
+  const isInsideHorizontalScroll = (target: EventTarget | null): boolean => {
+    let el = target as HTMLElement | null;
+    while (el && el !== document.body && el !== document.documentElement) {
+      if (
+        el.getAttribute?.('data-horizontal-scroll') === 'true' ||
+        el.getAttribute?.('role') === 'tablist' ||
+        el.classList?.contains('overflow-x-auto') ||
+        el.classList?.contains('overflow-x-scroll') ||
+        el.classList?.contains('no-swipe') ||
+        el.tagName === 'INPUT' ||
+        el.tagName === 'TEXTAREA' ||
+        el.tagName === 'SELECT'
+      ) {
+        return true;
+      }
+      if (
+        el.scrollWidth > el.clientWidth &&
+        (window.getComputedStyle(el).overflowX === 'auto' || window.getComputedStyle(el).overflowX === 'scroll')
+      ) {
+        return true;
+      }
+      el = el.parentElement;
+    }
+    return false;
+  };
+
   const handleTouchStart = (e: React.TouchEvent) => {
-    if (activeView === 'chat') return;
+    if (activeView === 'chat' || isInsideHorizontalScroll(e.target)) {
+      touchStartRef.current = null;
+      return;
+    }
     const t = e.touches[0];
     touchStartRef.current = { x: t.clientX, y: t.clientY };
   };
@@ -460,13 +490,38 @@ export default function App() {
     setCharacters([...storageService.getCharacters()]);
   };
 
-  // View Creator Profile
-  const handleViewCreatorProfile = (creatorId: string) => {
-    const matched = DEMO_ACCOUNTS.find(a => a.id === creatorId);
-    if (matched) {
-      setSelectedCreatorProfile(matched);
-      setActiveView('user-profile');
-    }
+  // View Creator Profile (BUG #11: dynamically resolves both demo accounts and community/imported creators)
+  const handleViewCreatorProfile = (creatorIdentifier: string) => {
+    if (!creatorIdentifier) return;
+    const cleanHandle = creatorIdentifier.replace(/^@+/, '').trim();
+    const matched =
+      DEMO_ACCOUNTS.find(
+        a => a.id === creatorIdentifier || a.username.toLowerCase() === cleanHandle.toLowerCase()
+      ) ||
+      (() => {
+        const sampleChar = characters.find(
+          c =>
+            c.creatorId === creatorIdentifier ||
+            c.creatorUsername?.toLowerCase() === cleanHandle.toLowerCase()
+        );
+        const dynamicUser: User = {
+          id: sampleChar?.creatorId || `creator_${cleanHandle}`,
+          username: cleanHandle,
+          displayName: sampleChar?.creatorUsername || cleanHandle,
+          avatarUrl:
+            sampleChar?.creatorAvatar ||
+            `https://avatars.charhub.io/avatars/${encodeURIComponent(cleanHandle)}/avatar.webp`,
+          bannerUrl: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=1200',
+          bio: `Community creator @${cleanHandle}. Explore their roleplay bots in Warden AI.`,
+          role: 'user',
+          accountStatus: 'active',
+          createdAt: new Date().toISOString()
+        };
+        return dynamicUser;
+      })();
+
+    setSelectedCreatorProfile(matched);
+    setActiveView('user-profile');
   };
 
   // Moderation Handlers
@@ -673,6 +728,7 @@ export default function App() {
                 onOpenImportModal={() => setIsGlobalImportOpen(true)}
                 onImportCard={handleDirectImportCard}
                 currentUserId={currentUser.id}
+                onViewCreatorProfile={handleViewCreatorProfile}
               />
             )}
 

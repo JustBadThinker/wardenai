@@ -60,6 +60,7 @@ interface DiscoverViewProps {
   onOpenImportModal?: () => void;
   onImportCard?: (card: ImportedCardData) => void;
   currentUserId?: string;
+  onViewCreatorProfile?: (creatorIdentifier: string) => void;
 }
 
 type DiscoverTab = 'community' | 'library' | 'webhub';
@@ -84,7 +85,8 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
   onAddNewTag,
   onOpenImportModal,
   onImportCard,
-  currentUserId = 'default'
+  currentUserId = 'default',
+  onViewCreatorProfile
 }) => {
   // Main view tab
   const [activeTab, setActiveTab] = useState<DiscoverTab>('community');
@@ -689,6 +691,8 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
 
               <div
                 ref={tagStripRef}
+                data-horizontal-scroll="true"
+                role="tablist"
                 className={`flex-1 flex items-center gap-2 ${
                   tagsExpanded ? 'flex-wrap' : 'overflow-x-auto scrollbar-none'
                 } py-0.5`}
@@ -998,10 +1002,14 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                       key={creator.creatorName}
                       className="p-4 rounded-2xl bg-[#131621] border border-[#24293b] hover:border-purple-500/40 flex flex-col justify-between gap-3 transition-all shadow-md"
                     >
-                      <div className="flex items-center gap-3.5">
+                      <div
+                        onClick={() => onViewCreatorProfile && onViewCreatorProfile(creator.creatorName)}
+                        className="flex items-center gap-3.5 cursor-pointer group"
+                      >
                         <img
                           src={creator.avatarUrl}
                           alt={creator.creatorName}
+                          referrerPolicy="no-referrer"
                           className="w-14 h-14 rounded-full object-cover border border-purple-500/30 bg-neutral-900 shrink-0"
                         />
                         <div className="min-w-0 flex-1">
@@ -1305,6 +1313,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
         character={selectedCommunityChar}
         isOpen={Boolean(selectedCommunityChar)}
         onClose={() => setSelectedCommunityChar(null)}
+        onViewCreatorProfile={onViewCreatorProfile}
         onStartChat={(c, d) => handleStartChatCommunityChar(c, d)}
         onImport={(c, d) => handleImportCommunityChar(c, d)}
         isBookmarked={

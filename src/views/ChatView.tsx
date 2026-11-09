@@ -336,8 +336,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
   const chatCharName = extractCleanCharacterName(
     character.name,
     character.subtitle,
-    character.firstMessage,
-    character.personality
+    currentScenario?.openingMessage || conversation.messages?.[0]?.content || character.firstMessage,
+    character.personality || character.systemPrompt || character.shortDescription
   );
 
   const currentOptimizerLevel: TokenOptimizerLevel =
@@ -1571,6 +1571,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
               <img
                 src={character.avatarUrl}
                 alt={character.name}
+                referrerPolicy="no-referrer"
                 onClick={() => setLightboxImage({ url: character.avatarUrl, title: character.name })}
                 className="w-8 h-8 rounded-full object-cover bg-neutral-900 ring-1 ring-neutral-700 cursor-pointer hover:ring-2 hover:ring-purple-400 hover:scale-105 active:scale-95 transition-all"
                 title="Click to view image preview"
@@ -1669,6 +1670,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                   <img
                     src={senderAvatar}
                     alt={senderName}
+                    referrerPolicy="no-referrer"
                     onClick={() => setLightboxImage({ url: senderAvatar, title: senderName })}
                     className="w-9 h-9 sm:w-10 sm:h-10 rounded-full object-cover shrink-0 bg-neutral-900 mt-0.5 shadow-sm cursor-pointer hover:ring-2 hover:ring-purple-400 hover:scale-105 active:scale-95 transition-all"
                     title="Click to view full image preview"
@@ -1975,14 +1977,14 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
             {/* Main Floating Frosted Glass Input Container */}
             <div className="bg-[#0c0e14]/70 backdrop-blur-2xl border border-white/15 focus-within:border-purple-400/50 rounded-2xl px-3 py-2 flex items-end gap-2 sm:gap-2.5 shadow-[0_8px_32px_rgba(0,0,0,0.5)] transition-all">
-              {/* Left + Button: Toggles Floating Formatting Toolbar */}
+              {/* Left + Button: Toggles Floating Formatting Toolbar (BUG #10: aligned with input & send button) */}
               <button
                 type="button"
                 onClick={() => setIsFormatBarOpen(prev => !prev)}
-                className={`w-7 h-7 mb-0.5 rounded-full flex items-center justify-center transition-all shrink-0 cursor-pointer ${
+                className={`w-8 h-8 mb-0.5 rounded-xl flex items-center justify-center transition-all shrink-0 cursor-pointer ${
                   isFormatBarOpen
-                    ? 'bg-purple-600 text-white shadow-sm'
-                    : 'bg-[#181c28] hover:bg-[#202638] text-neutral-400 hover:text-white'
+                    ? 'bg-purple-600 text-white shadow-sm ring-1 ring-purple-400'
+                    : 'bg-[#181c28] hover:bg-[#202638] text-neutral-400 hover:text-white border border-white/10'
                 }`}
                 title="Format helpers (Bold, Italic, Quotes, Brackets)"
               >
@@ -1994,12 +1996,13 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsPersonaQuickOpen(prev => !prev)}
-                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-full ring-1 ring-purple-500/40 hover:ring-purple-400 hover:scale-105 transition-all overflow-hidden cursor-pointer"
+                  className="w-8 h-8 rounded-xl ring-1 ring-purple-500/40 hover:ring-purple-400 hover:scale-105 transition-all overflow-hidden cursor-pointer"
                   title={`Roleplaying as: ${currentPersona?.name} (Click to switch persona)`}
                 >
                   <img
                     src={currentPersona?.avatarUrl || currentUser.avatarUrl}
                     alt={currentPersona?.name || currentUser.displayName}
+                    referrerPolicy="no-referrer"
                     className="w-full h-full object-cover"
                   />
                 </button>
@@ -3304,6 +3307,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
             <img
               src={lightboxImage.url}
               alt={lightboxImage.title}
+              referrerPolicy="no-referrer"
               className="max-w-full max-h-[80vh] object-contain rounded-2xl border border-white/10 shadow-2xl"
             />
 
@@ -3377,6 +3381,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                   <img
                     src={character.avatarUrl || character.coverUrl || ''}
                     alt={character.name}
+                    referrerPolicy="no-referrer"
                     className="w-full h-full object-cover object-top cursor-pointer hover:scale-105 transition-transform duration-300"
                     onClick={() => setLightboxImage({ url: character.avatarUrl || character.coverUrl || '', title: character.name })}
                   />
@@ -3395,10 +3400,10 @@ export const ChatView: React.FC<ChatViewProps> = ({
                         )}
                       </div>
                       <h2 className="text-lg sm:text-xl font-extrabold text-white tracking-tight leading-tight">
-                        {character.name}
+                        {chatCharName}
                       </h2>
                       <p className="text-xs text-neutral-300 mt-0.5 font-medium line-clamp-1">
-                        {character.subtitle || character.shortDescription}
+                        {character.name !== chatCharName ? character.name : character.subtitle || character.shortDescription}
                       </p>
                     </div>
                   </div>

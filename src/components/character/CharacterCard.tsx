@@ -64,6 +64,7 @@ export const CharacterCard: React.FC<CharacterCardProps> = ({
           <img
             src={character.avatarUrl}
             alt={character.name}
+            referrerPolicy="no-referrer"
             className={`w-full h-full object-cover transition-transform duration-300 group-hover:scale-105 ${
               shouldBlur ? 'blur-md' : ''
             }`}
@@ -101,7 +102,25 @@ export const CharacterCard: React.FC<CharacterCardProps> = ({
     );
   }
 
+  const [imgSrc, setImgSrc] = useState(character.avatarUrl || character.coverUrl || '');
   const [imgError, setImgError] = useState(false);
+
+  useEffect(() => {
+    setImgSrc(character.avatarUrl || character.coverUrl || '');
+    setImgError(false);
+  }, [character.avatarUrl, character.coverUrl]);
+
+  const handleImgError = () => {
+    if (imgSrc === character.avatarUrl && character.coverUrl && character.coverUrl !== character.avatarUrl) {
+      setImgSrc(character.coverUrl);
+    } else if (imgSrc.includes('card.webp')) {
+      setImgSrc(imgSrc.replace('card.webp', 'thumb.webp'));
+    } else if (imgSrc.includes('thumb.webp')) {
+      setImgSrc(imgSrc.replace('thumb.webp', 'avatar.webp'));
+    } else {
+      setImgError(true);
+    }
+  };
 
   // Standard Discord/Warden Community Card (matches Panel 1 & Panel 5 exactly)
   return (
@@ -111,15 +130,16 @@ export const CharacterCard: React.FC<CharacterCardProps> = ({
     >
       {/* Artwork Banner with Rating Badge & Bookmark */}
       <div className="relative aspect-[16/11] w-full overflow-hidden bg-[#0c0e14]">
-        {!imgError ? (
+        {!imgError && imgSrc ? (
           <img
-            src={character.avatarUrl || character.coverUrl}
+            src={imgSrc}
             alt={character.name}
+            referrerPolicy="no-referrer"
             className={`w-full h-full object-cover object-top transition-transform duration-300 group-hover:scale-[1.02] ${
               shouldBlur ? 'blur-xl scale-110' : ''
             }`}
             loading="lazy"
-            onError={() => setImgError(true)}
+            onError={handleImgError}
           />
         ) : (
           <div className="w-full h-full bg-gradient-to-br from-purple-950/60 via-[#12151e] to-black flex flex-col items-center justify-center p-4">

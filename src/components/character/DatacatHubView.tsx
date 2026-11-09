@@ -479,6 +479,7 @@ export const DatacatHubView: React.FC<DatacatHubViewProps> = ({
                       <img
                         src={c.avatarUrl}
                         alt={c.name}
+                        referrerPolicy="no-referrer"
                         className="w-7 h-7 rounded-lg object-cover bg-neutral-900 shrink-0"
                       />
                       <div className="max-w-[95px]">

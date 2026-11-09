@@ -315,6 +315,7 @@ export const ChatsListView: React.FC<ChatsListViewProps> = ({
                         'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=150'
                       }
                       alt={charDisplayName}
+                      referrerPolicy="no-referrer"
                       className={`w-14 h-14 sm:w-16 sm:h-16 rounded-xl object-cover shrink-0 bg-neutral-900 border border-white/10 transition-transform duration-300 ${
                         isExpanded ? 'scale-[1.03] ring-1 ring-purple-400/40' : ''
                       }`}

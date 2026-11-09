@@ -120,6 +120,7 @@ export const CharacterProfileView: React.FC<CharacterProfileViewProps> = ({
         <img
           src={character.coverUrl || character.avatarUrl}
           alt={character.name}
+          referrerPolicy="no-referrer"
           className="w-full h-full object-cover object-top"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-[#0c0e14] via-[#0c0e14]/40 to-black/50" />
@@ -203,6 +204,7 @@ export const CharacterProfileView: React.FC<CharacterProfileViewProps> = ({
               <img
                 src={character.avatarUrl}
                 alt={character.name}
+                referrerPolicy="no-referrer"
                 className="w-full h-full object-cover"
               />
             </div>
@@ -308,7 +310,11 @@ export const CharacterProfileView: React.FC<CharacterProfileViewProps> = ({
         </div>
 
         {/* Navigation Tabs (About, Scenarios, Gallery, Lorebook, Comments) */}
-        <div className="border-b border-[#1b1e28] flex items-center gap-5 sm:gap-8 text-xs sm:text-sm font-semibold overflow-x-auto no-scrollbar w-full">
+        <div
+          role="tablist"
+          data-horizontal-scroll="true"
+          className="border-b border-[#1b1e28] flex items-center gap-5 sm:gap-8 text-xs sm:text-sm font-semibold overflow-x-auto no-scrollbar w-full"
+        >
           <button
             onClick={() => setActiveTab('about')}
             className={`pb-3 transition-colors relative cursor-pointer shrink-0 ${
@@ -514,11 +520,11 @@ export const CharacterProfileView: React.FC<CharacterProfileViewProps> = ({
         {activeTab === 'gallery' && (
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <div className="aspect-[3/4] rounded-xl overflow-hidden bg-[#12151e] border border-[#1b1e28]">
-              <img src={character.avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+              <img src={character.avatarUrl} alt="Avatar" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
             </div>
             {character.coverUrl && (
               <div className="aspect-[3/4] rounded-xl overflow-hidden bg-[#12151e] border border-[#1b1e28]">
-                <img src={character.coverUrl} alt="Cover" className="w-full h-full object-cover" />
+                <img src={character.coverUrl} alt="Cover" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
               </div>
             )}
           </div>

@@ -76,10 +76,10 @@ export function extractCleanCharacterName(
   // Example: "Giantess Yuuka Kazami — She Found You Lost in the Sunflowers" -> "Giantess Yuuka Kazami"
   // Example: "Viktor Antonov - The Cold Commander" -> "Viktor Antonov"
   // Example: "Sora | Your clingy childhood friend" -> "Sora"
-  const beforeSeparator = raw.match(/^([A-Za-z0-9\s.'’_-]{2,34}?)\s*(?:[—–|~•]|\s+[-–—]\s+|\s*:\s+).+/);
-  if (beforeSeparator && beforeSeparator[1] && !beforeSeparator[1].includes('"') && !beforeSeparator[1].includes('“')) {
-    const candidate = beforeSeparator[1].trim();
-    if (candidate.length >= 2 && candidate.length <= 32) {
+  const sepMatch = raw.match(/^(.+?)\s*(?:[—–|~•]|\s+[-–—]\s+|\s*:\s+)(.+)$/);
+  if (sepMatch && sepMatch[1]) {
+    const candidate = sepMatch[1].trim();
+    if (candidate.length >= 2 && candidate.length <= 40 && !candidate.startsWith('"') && !candidate.startsWith('“')) {
       return candidate;
     }
   }
@@ -102,7 +102,8 @@ export function extractCleanCharacterName(
     const combined = `${personality || ''}\n${firstMessage || ''}`;
     const nameMatch =
       combined.match(/(?:You are|Character:|Name:|\{\{char\}\} is)\s+([A-Z][a-zA-Z0-9'’_-]+(?:\s+[A-Z][a-zA-Z0-9'’_-]+)?)/i) ||
-      combined.match(/\b([A-Z][a-z]{2,15}(?:\s+[A-Z][a-z]{2,15})?)\s+(?:has stopped|smiles|looks at you|glares|observes|stands|walks|steps|sighs|chuckles)\b/);
+      combined.match(/\b([A-Z][a-z]{2,15}(?:\s+[A-Z][a-z]{2,15})?)\s+(?:has stopped|smiles|looks|glares|observes|stands|walks|steps|sighs|chuckles|grins|laughs|watches|leans|crosses|sits|speaks|whispers|taps|nods|turns)\b/) ||
+      combined.match(/\b([A-Z][a-z]{2,15})'s\b/);
     if (nameMatch && nameMatch[1]) {
       return nameMatch[1].trim();
     }

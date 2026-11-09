@@ -38,6 +38,7 @@ interface CommunityCharacterModalProps {
   blurNsfw: boolean;
   isFollowingCreator?: boolean;
   onToggleFollowCreator?: (creatorName: string, avatarUrl?: string) => void;
+  onViewCreatorProfile?: (creatorName: string) => void;
 }
 
 export const CommunityCharacterModal: React.FC<CommunityCharacterModalProps> = ({
@@ -50,7 +51,8 @@ export const CommunityCharacterModal: React.FC<CommunityCharacterModalProps> = (
   onToggleBookmark,
   blurNsfw,
   isFollowingCreator,
-  onToggleFollowCreator
+  onToggleFollowCreator,
+  onViewCreatorProfile
 }) => {
   const [detail, setDetail] = useState<CommunityCharacterDetail | null>(null);
   const [loading, setLoading] = useState(false);
@@ -115,6 +117,7 @@ export const CommunityCharacterModal: React.FC<CommunityCharacterModalProps> = (
           <img
             src={detail?.avatarUrl || character.avatarUrl}
             alt={character.name}
+            referrerPolicy="no-referrer"
             className={`w-full h-full object-cover object-top ${
               shouldBlur ? 'blur-2xl scale-110' : ''
             }`}
@@ -173,7 +176,19 @@ export const CommunityCharacterModal: React.FC<CommunityCharacterModalProps> = (
               <div className="flex items-center gap-2">
                 <div className="flex items-center gap-1.5">
                   <span>by</span>
-                  <span className="text-white font-semibold">@{cleanCreatorHandle(character.creatorName)}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onViewCreatorProfile) {
+                        onClose();
+                        onViewCreatorProfile(character.creatorName);
+                      }
+                    }}
+                    className="text-white font-semibold hover:text-purple-300 transition-colors cursor-pointer"
+                    title="View creator profile"
+                  >
+                    @{cleanCreatorHandle(character.creatorName)}
+                  </button>
                   <CheckCircle2 className="w-3.5 h-3.5 text-purple-400 fill-purple-400/20" />
                 </div>
 
@@ -211,7 +226,11 @@ export const CommunityCharacterModal: React.FC<CommunityCharacterModalProps> = (
         </div>
 
         {/* Modal Navigation Tabs */}
-        <div className="px-5 py-2.5 bg-[#12151e] border-b border-[#1b1e28] flex items-center justify-between shrink-0">
+        <div
+          role="tablist"
+          data-horizontal-scroll="true"
+          className="px-5 py-2.5 bg-[#12151e] border-b border-[#1b1e28] flex items-center justify-between shrink-0 overflow-x-auto no-scrollbar"
+        >
           <div className="flex items-center gap-1.5">
             <button
               onClick={() => setActiveTab('overview')}

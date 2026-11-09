@@ -45,9 +45,25 @@ export const CommunityCharacterCard: React.FC<CommunityCharacterCardProps> = ({
   onToggleFollowCreator,
   onCreatorClick
 }) => {
+  const [imgSrc, setImgSrc] = useState(character.avatarUrl || '');
   const [imgError, setImgError] = useState(false);
   const [revealed, setRevealed] = useState(false);
   const shouldBlur = character.isNsfw && blurNsfw && !revealed;
+
+  useEffect(() => {
+    setImgSrc(character.avatarUrl || '');
+    setImgError(false);
+  }, [character.avatarUrl]);
+
+  const handleImgError = () => {
+    if (imgSrc.includes('card.webp')) {
+      setImgSrc(imgSrc.replace('card.webp', 'thumb.webp'));
+    } else if (imgSrc.includes('thumb.webp')) {
+      setImgSrc(imgSrc.replace('thumb.webp', 'avatar.webp'));
+    } else {
+      setImgError(true);
+    }
+  };
 
   const formatCount = (num: number) => {
     if (!num) return '0';
@@ -67,15 +83,16 @@ export const CommunityCharacterCard: React.FC<CommunityCharacterCardProps> = ({
     >
       {/* Artwork Banner with Badges & Action Buttons */}
       <div className="relative aspect-[16/11] w-full overflow-hidden bg-[#0c0e14]">
-        {!imgError ? (
+        {!imgError && imgSrc ? (
           <img
-            src={character.avatarUrl}
+            src={imgSrc}
             alt={character.name}
+            referrerPolicy="no-referrer"
             className={`w-full h-full object-cover object-top transition-transform duration-300 group-hover:scale-[1.03] ${
               shouldBlur ? 'blur-xl scale-110' : ''
             }`}
             loading="lazy"
-            onError={() => setImgError(true)}
+            onError={handleImgError}
           />
         ) : (
           <div className="w-full h-full bg-gradient-to-br from-purple-950/60 via-[#12151e] to-black flex flex-col items-center justify-center p-4">

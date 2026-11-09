@@ -62,7 +62,11 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
   // Strict privacy filter: only public, published characters are visible on public profiles!
   // If owner, include private/draft characters so creator can test them!
   const userCharacters = characters.filter(
-    c => c.creatorId === user.id && (isOwner ? true : c.publicationStatus === 'published' && c.visibility === 'public')
+    c =>
+      (c.creatorId === user.id ||
+        c.creatorUsername?.toLowerCase() === user.username?.toLowerCase() ||
+        c.creatorUsername?.toLowerCase() === user.displayName?.toLowerCase()) &&
+      (isOwner ? true : c.publicationStatus === 'published' && c.visibility === 'public')
   );
 
   const handleSaveBio = () => {
@@ -86,6 +90,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
           <img
             src={user.bannerUrl || 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=1200'}
             alt="Banner"
+            referrerPolicy="no-referrer"
             className="w-full h-full object-cover opacity-80"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-neutral-900 via-neutral-900/40 to-transparent" />
@@ -96,6 +101,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
             <img
               src={user.avatarUrl}
               alt={user.displayName}
+              referrerPolicy="no-referrer"
               className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl object-cover ring-4 ring-neutral-900 shadow-xl bg-neutral-950 shrink-0"
             />
             <div className="space-y-1">
