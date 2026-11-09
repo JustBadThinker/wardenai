@@ -149,6 +149,9 @@ export const ChatView: React.FC<ChatViewProps> = ({
     isPersona: false
   });
 
+  // Smooth entering transition cover with white glowing cat logo to mask layout & instant scroll-to-bottom
+  const [isEnteringChat, setIsEnteringChat] = useState(true);
+
   // Active Global Background from storage or prop
   const activeBg: GlobalChatBackground = globalBackground || storageService.getGlobalChatBackground();
 
@@ -503,6 +506,11 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
   // Immediate auto-scroll to bottom when chat is first opened or conversation switched
   useEffect(() => {
+    setIsEnteringChat(true);
+    const coverTimer = setTimeout(() => {
+      setIsEnteringChat(false);
+    }, 280);
+
     if (initialScrollDoneConvId.current !== conversation.id) {
       initialScrollDoneConvId.current = conversation.id;
       setIsScrolledUp(false);
@@ -520,15 +528,18 @@ export const ChatView: React.FC<ChatViewProps> = ({
       const rAF = requestAnimationFrame(scrollDownImmediate);
       const t1 = setTimeout(scrollDownImmediate, 40);
       const t2 = setTimeout(scrollDownImmediate, 120);
-      const t3 = setTimeout(scrollDownImmediate, 280);
+      const t3 = setTimeout(scrollDownImmediate, 240);
 
       return () => {
         cancelAnimationFrame(rAF);
         clearTimeout(t1);
         clearTimeout(t2);
         clearTimeout(t3);
+        clearTimeout(coverTimer);
       };
     }
+
+    return () => clearTimeout(coverTimer);
   }, [conversation.id]);
 
   useEffect(() => {
@@ -1468,6 +1479,61 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
   return (
     <div className="fixed inset-0 md:relative md:inset-auto flex h-[100dvh] w-full bg-[#0c0e14] overflow-hidden text-neutral-200 select-none z-30">
+      {/* ── Chat Opening Transition Cover (Masks message layout & instant scroll-to-bottom with smooth fade-zoom) ── */}
+      <AnimatePresence>
+        {isEnteringChat && (
+          <motion.div
+            key="chat-entering-cover"
+            initial={{ opacity: 1 }}
+            animate={{ opacity: 1 }}
+            exit={{
+              opacity: 0,
+              scale: 1.05,
+              filter: 'blur(10px)',
+              transition: { duration: 0.32, ease: [0.16, 1, 0.3, 1] }
+            }}
+            className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-[#090b10] select-none pointer-events-none transform-gpu"
+          >
+            {/* Ambient Radial Glow Bloom */}
+            <motion.div
+              initial={{ scale: 0.75, opacity: 0 }}
+              animate={{
+                scale: [0.75, 1.2, 1.05],
+                opacity: [0, 0.45, 0.35]
+              }}
+              transition={{ duration: 0.55, ease: [0.16, 1, 0.3, 1] }}
+              className="absolute w-44 h-44 rounded-full bg-gradient-to-tr from-purple-600/35 via-indigo-500/30 to-blue-500/25 blur-3xl pointer-events-none"
+            />
+
+            {/* Glowing White Cat Logo with Smooth Spring Zoom-in */}
+            <motion.div
+              initial={{ scale: 0.8, opacity: 0, y: 6 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 1.12, opacity: 0, y: -4 }}
+              transition={{ type: 'spring', damping: 24, stiffness: 360 }}
+              className="relative flex flex-col items-center gap-3.5"
+            >
+              <div className="relative w-14 h-14 flex items-center justify-center">
+                {/* Pulsing ring around cat */}
+                <div className="absolute inset-0 rounded-full bg-purple-500/20 blur-md animate-pulse" />
+                <img
+                  src="/warden-cat-logo.png"
+                  alt="Warden AI"
+                  className="w-11 h-11 object-contain filter drop-shadow-[0_0_16px_rgba(168,85,247,0.7)] animate-pulse"
+                  style={{ animationDuration: '1.2s' }}
+                />
+              </div>
+
+              {/* Character name badge */}
+              <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-purple-950/40 border border-purple-500/30 text-purple-200 text-xs font-semibold shadow-md">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                <span>Opening {character.name.split(' ')[0]}</span>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* 1. COLUMN 2: Recent Chats Column (Desktop only) — Grouped Character Accordion Cards */}
       <div className="hidden lg:flex flex-col w-80 border-r border-[#1a1d27] bg-[#0c0e14] shrink-0">
         <div className="p-3 border-b border-[#1a1d27] space-y-2">
