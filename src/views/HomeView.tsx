@@ -446,14 +446,24 @@ export const HomeView: React.FC<HomeViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Catalog Source Switcher (JanitorAI <-> Chub.ai) */}
-          <div className="flex items-center bg-[#131622] p-0.5 rounded-lg border border-[#262b3d]">
+          {/* Catalog Source Switcher (JanitorAI <-> Chub.ai) with GPU Bouncy Indicator */}
+          <div className="relative inline-flex items-center bg-[#131622] p-0.5 rounded-lg border border-[#262b3d] select-none">
+            {/* Sliding Bouncy Indicator (GPU rendered via translate3d) */}
+            <div
+              className="absolute top-0.5 bottom-0.5 rounded-md bg-purple-600 shadow-xs pointer-events-none transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] transform-gpu"
+              style={{
+                width: 'calc(50% - 2px)',
+                transform: catalogSource === 'janitor'
+                  ? 'translate3d(0, 0, 0)'
+                  : 'translate3d(100%, 0, 0)'
+              }}
+            />
             <button
               type="button"
               onClick={() => handleSourceChange('janitor')}
-              className={`px-2 py-1 text-[11px] font-bold rounded-md transition-all cursor-pointer ${
+              className={`relative z-10 px-2.5 py-1 text-[11px] font-bold rounded-md transition-colors duration-200 cursor-pointer ${
                 catalogSource === 'janitor'
-                  ? 'bg-purple-600 text-white shadow-xs'
+                  ? 'text-white'
                   : 'text-neutral-400 hover:text-white'
               }`}
               title="Browse JanitorAI characters"
@@ -463,9 +473,9 @@ export const HomeView: React.FC<HomeViewProps> = ({
             <button
               type="button"
               onClick={() => handleSourceChange('chub')}
-              className={`px-2 py-1 text-[11px] font-bold rounded-md transition-all cursor-pointer ${
+              className={`relative z-10 px-2.5 py-1 text-[11px] font-bold rounded-md transition-colors duration-200 cursor-pointer ${
                 catalogSource === 'chub'
-                  ? 'bg-purple-600 text-white shadow-xs'
+                  ? 'text-white'
                   : 'text-neutral-400 hover:text-white'
               }`}
               title="Browse Chub.ai / Charhub characters"

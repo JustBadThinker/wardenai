@@ -139,6 +139,17 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
 
   // Image 3 Segmented Controls State
   const [entityMode, setEntityMode] = useState<EntityMode>('characters');
+  const [isSwitchingEntity, setIsSwitchingEntity] = useState<boolean>(false);
+
+  const handleSwitchEntityMode = (mode: EntityMode) => {
+    if (mode === entityMode) return;
+    setEntityMode(mode);
+    setIsSwitchingEntity(true);
+    setTimeout(() => {
+      setIsSwitchingEntity(false);
+    }, 220);
+  };
+
   const [sfwOnly, setSfwOnly] = useState<boolean>(false);
   const [scopeMode, setScopeMode] = useState<ScopeMode>('all');
   const [communitySort, setCommunitySort] = useState<CatalogSort>('latest');
@@ -645,14 +656,24 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
         <div className="flex items-center gap-2">
           {activeTab === 'community' && (
             <>
-              {/* Catalog Source Switcher: JanitorAI <-> Chub.ai */}
-              <div className="flex items-center bg-[#12151e] p-0.5 rounded-lg border border-[#1b1e28]">
+              {/* Catalog Source Switcher: JanitorAI <-> Chub.ai with GPU Bouncy Spring Switcher */}
+              <div className="relative inline-flex items-center bg-[#12151e] p-0.5 rounded-lg border border-[#1b1e28] select-none">
+                {/* Sliding Bouncy Indicator (GPU rendered via translate3d) */}
+                <div
+                  className="absolute top-0.5 bottom-0.5 rounded-md bg-purple-600 shadow-xs pointer-events-none transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] transform-gpu"
+                  style={{
+                    width: 'calc(50% - 2px)',
+                    transform: catalogSource === 'janitor'
+                      ? 'translate3d(0, 0, 0)'
+                      : 'translate3d(100%, 0, 0)'
+                  }}
+                />
                 <button
                   type="button"
                   onClick={() => handleSourceChange('janitor')}
-                  className={`px-2 py-1 text-[11px] font-bold rounded-md transition-all cursor-pointer ${
+                  className={`relative z-10 px-2.5 py-1 text-[11px] font-bold rounded-md transition-colors duration-200 cursor-pointer ${
                     catalogSource === 'janitor'
-                      ? 'bg-purple-600 text-white shadow-xs'
+                      ? 'text-white'
                       : 'text-neutral-400 hover:text-white'
                   }`}
                   title="Browse JanitorAI characters"
@@ -662,9 +683,9 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                 <button
                   type="button"
                   onClick={() => handleSourceChange('chub')}
-                  className={`px-2 py-1 text-[11px] font-bold rounded-md transition-all cursor-pointer ${
+                  className={`relative z-10 px-2.5 py-1 text-[11px] font-bold rounded-md transition-colors duration-200 cursor-pointer ${
                     catalogSource === 'chub'
-                      ? 'bg-purple-600 text-white shadow-xs'
+                      ? 'text-white'
                       : 'text-neutral-400 hover:text-white'
                   }`}
                   title="Browse Chub.ai / Charhub characters"
@@ -857,14 +878,24 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
             {/* ROW 2: Segmented Pill Filters + Sort Dropdown (Matches Image 3) */}
             <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
               <div className="flex flex-wrap items-center gap-2.5">
-                {/* Pill Group 1: Characters | Creators */}
-                <div className="inline-flex items-center p-1 rounded-full bg-[#151823] border border-[#262b3d]">
+                {/* Pill Group 1: Characters | Creators with GPU Bouncy Spring Switcher */}
+                <div className="relative inline-flex items-center p-1 rounded-full bg-[#151823] border border-[#262b3d] select-none">
+                  {/* Sliding Bouncy Indicator (GPU rendered via translate3d) */}
+                  <div
+                    className="absolute top-1 bottom-1 rounded-full bg-gradient-to-r from-purple-700 to-fuchsia-700 border border-purple-400/40 shadow-sm shadow-purple-950/50 pointer-events-none transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] transform-gpu"
+                    style={{
+                      width: 'calc(50% - 4px)',
+                      transform: entityMode === 'characters'
+                        ? 'translate3d(0, 0, 0)'
+                        : 'translate3d(100%, 0, 0)'
+                    }}
+                  />
                   <button
                     type="button"
-                    onClick={() => setEntityMode('characters')}
-                    className={`px-3.5 py-1 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                    onClick={() => handleSwitchEntityMode('characters')}
+                    className={`relative z-10 px-3.5 py-1 text-xs font-bold transition-colors duration-200 cursor-pointer ${
                       entityMode === 'characters'
-                        ? 'bg-gradient-to-r from-purple-700/80 to-fuchsia-700/80 text-white border border-purple-400/40 shadow-sm'
+                        ? 'text-white'
                         : 'text-neutral-400 hover:text-neutral-200'
                     }`}
                   >
@@ -872,10 +903,10 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                   </button>
                   <button
                     type="button"
-                    onClick={() => setEntityMode('creators')}
-                    className={`px-3.5 py-1 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                    onClick={() => handleSwitchEntityMode('creators')}
+                    className={`relative z-10 px-3.5 py-1 text-xs font-bold transition-colors duration-200 cursor-pointer ${
                       entityMode === 'creators'
-                        ? 'bg-gradient-to-r from-purple-700/80 to-fuchsia-700/80 text-white border border-purple-400/40 shadow-sm'
+                        ? 'text-white'
                         : 'text-neutral-400 hover:text-neutral-200'
                     }`}
                   >
@@ -883,17 +914,28 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                   </button>
                 </div>
 
-                {/* Pill Group 2: All | Limited Only (SFW) */}
-                <div className="inline-flex items-center p-1 rounded-full bg-[#151823] border border-[#262b3d]">
+                {/* Pill Group 2: All | Limited Only (SFW) with GPU Bouncy Spring Switcher */}
+                <div className="relative inline-flex items-center p-1 rounded-full bg-[#151823] border border-[#262b3d] select-none">
+                  {/* Sliding Bouncy Indicator (GPU rendered via translate3d) */}
+                  <div
+                    className="absolute top-1 bottom-1 rounded-full bg-gradient-to-r from-purple-700 to-fuchsia-700 border border-purple-400/40 shadow-sm shadow-purple-950/50 pointer-events-none transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] transform-gpu"
+                    style={{
+                      width: 'calc(50% - 4px)',
+                      transform: !sfwOnly
+                        ? 'translate3d(0, 0, 0)'
+                        : 'translate3d(100%, 0, 0)'
+                    }}
+                  />
                   <button
                     type="button"
                     onClick={() => {
+                      if (!sfwOnly) return;
                       setSfwOnly(false);
                       setCurrentPage(1);
                     }}
-                    className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                    className={`relative z-10 px-3 py-1 text-xs font-bold flex items-center gap-1.5 transition-colors duration-200 cursor-pointer ${
                       !sfwOnly
-                        ? 'bg-gradient-to-r from-purple-700/80 to-fuchsia-700/80 text-white border border-purple-400/40 shadow-sm'
+                        ? 'text-white'
                         : 'text-neutral-400 hover:text-neutral-200'
                     }`}
                   >
@@ -903,12 +945,13 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                   <button
                     type="button"
                     onClick={() => {
+                      if (sfwOnly) return;
                       setSfwOnly(true);
                       setCurrentPage(1);
                     }}
-                    className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                    className={`relative z-10 px-3 py-1 text-xs font-bold flex items-center gap-1.5 transition-colors duration-200 cursor-pointer ${
                       sfwOnly
-                        ? 'bg-gradient-to-r from-purple-700/80 to-fuchsia-700/80 text-white border border-purple-400/40 shadow-sm'
+                        ? 'text-white'
                         : 'text-neutral-400 hover:text-neutral-200'
                     }`}
                   >
@@ -1085,9 +1128,17 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
               </div>
             )}
 
-            {/* ── CREATORS MODE VIEW ── */}
-            {entityMode === 'creators' ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pt-1">
+            {/* ── SMOOTH TRANSITION COVER OR CONTENT VIEW ── */}
+            {isSwitchingEntity ? (
+              <div className="py-28 flex flex-col items-center justify-center gap-3 animate-fade-in select-none">
+                <CatPulsingLoader
+                  size="md"
+                  label={`Loading ${entityMode === 'creators' ? 'Featured Creators' : 'Characters'}...`}
+                  glow={false}
+                />
+              </div>
+            ) : entityMode === 'creators' ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pt-1 animate-fade-in">
                 {creatorProfiles.map(creator => {
                   const isFollowing = followedCreators.some(
                     f => f.creatorName.toLowerCase() === creator.creatorName.toLowerCase()
