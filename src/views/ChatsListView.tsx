@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { Character, Conversation, Persona, User } from '../types';
 import { CustomSelect } from '../components/common/CustomSelect';
+import { storageService } from '../services/storageService';
 
 interface ChatsListViewProps {
   conversations: Conversation[];
@@ -94,7 +95,67 @@ export const ChatsListView: React.FC<ChatsListViewProps> = ({
     }
 
     const groups = Array.from(map.entries()).map(([characterId, charConvs]) => {
-      const char = characters.find(c => c.id === characterId);
+      let char = characters.find(c => c.id === characterId);
+      if (!char) {
+        char = storageService.getCharacterById(characterId);
+      }
+      if (!char && charConvs[0]) {
+        // Auto-recover orphaned character on the fly so it's immediately clickable
+        const c = charConvs[0];
+        const rawTitle = c.title || 'Character';
+        const parsedName = rawTitle.includes(' · ')
+          ? rawTitle.split(' · ')[0].trim()
+          : rawTitle.includes(' — ')
+          ? rawTitle.split(' — ')[0].trim()
+          : rawTitle;
+        const firstMsg = c.messages.find(
+          m => m.sender === 'character' || m.senderRole === 'assistant'
+        );
+        const scenarioTitle =
+          c.scenarioTitle ||
+          (rawTitle.includes(' · ') ? rawTitle.split(' · ')[1].trim() : 'Initial Encounter');
+
+        char = {
+          id: characterId,
+          creatorId: 'community',
+          creatorUsername: 'Community',
+          creatorAvatar: '',
+          name: parsedName,
+          subtitle: scenarioTitle,
+          avatarUrl:
+            'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=500',
+          shortDescription: `${parsedName} — Roleplay character (auto-recovered).`,
+          personality: 'Engaging roleplay character.',
+          background: '',
+          systemPrompt: `You are ${parsedName}.`,
+          firstMessage: firstMsg?.content || '',
+          exampleDialogue: '',
+          contentRating: 'Mature',
+          visibility: 'public',
+          publicationStatus: 'published',
+          scenarios: [
+            {
+              id: c.scenarioId || 'sc_1',
+              characterId,
+              title: scenarioTitle,
+              description: 'Roleplay scenario.',
+              openingMessage: firstMsg?.content || '',
+              scenarioInstructions: 'Roleplay scenario.',
+              displayOrder: 1,
+              createdAt: c.createdAt,
+              updatedAt: c.updatedAt
+            }
+          ],
+          tagSlugs: ['community'],
+          likeCount: 1,
+          bookmarkCount: 1,
+          chatCount: charConvs.length,
+          createdAt: c.createdAt,
+          updatedAt: c.updatedAt,
+          age: 20
+        };
+        storageService.upsertCharacter(char);
+      }
       const sortedChats = [...charConvs].sort((a, b) => {
         const timeA = new Date(a.updatedAt || a.createdAt || 0).getTime();
         const timeB = new Date(b.updatedAt || b.createdAt || 0).getTime();

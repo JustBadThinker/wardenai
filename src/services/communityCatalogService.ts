@@ -63,6 +63,8 @@ export const POPULAR_COMMUNITY_CATEGORIES: CommunityCategory[] = [
   { label: 'Comedy', value: 'comedy', tagId: '9' }
 ];
 
+export type CommunityCatalogSource = 'janitor' | 'chub';
+
 class CommunityCatalogService {
   private getBaseUrls(): string[] {
     const urls: string[] = [''];
@@ -77,6 +79,66 @@ class CommunityCatalogService {
   }
 
   private activeBaseUrlIndex = 0;
+  private datacatSessionToken: string = '';
+  private datacatTokenExpiresAt: number = 0;
+  private datacatIdentifyPromise: Promise<string> | null = null;
+
+  public getActiveSource(): CommunityCatalogSource {
+    try {
+      const s = localStorage.getItem('warden_catalog_source');
+      if (s === 'janitor' || s === 'chub') return s;
+    } catch {}
+    return 'janitor';
+  }
+
+  public setActiveSource(source: CommunityCatalogSource) {
+    try {
+      localStorage.setItem('warden_catalog_source', source);
+      this.clientQueryCache.clear();
+      window.dispatchEvent(
+        new CustomEvent('warden:catalog-source-changed', { detail: { source } })
+      );
+    } catch {}
+  }
+
+  private async ensureDatacatSession(): Promise<string> {
+    if (this.datacatSessionToken && Date.now() < this.datacatTokenExpiresAt) {
+      return this.datacatSessionToken;
+    }
+    if (this.datacatIdentifyPromise) {
+      return this.datacatIdentifyPromise;
+    }
+
+    this.datacatIdentifyPromise = (async () => {
+      try {
+        const rand = Array.from(crypto.getRandomValues(new Uint8Array(16)))
+          .map(r => r.toString(16).padStart(2, '0'))
+          .join('');
+        const deviceToken = `anon_${rand}_${Date.now().toString(36)}`;
+        const res = await fetch('https://datacat.run/api/liberator/identify', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Origin: 'https://datacat.run',
+            Referer: 'https://datacat.run/'
+          },
+          body: JSON.stringify({ deviceToken })
+        });
+        if (!res.ok) throw new Error(`Identify status ${res.status}`);
+        const data = await res.json();
+        if (data.sessionToken) {
+          this.datacatSessionToken = data.sessionToken;
+          this.datacatTokenExpiresAt = Date.now() + 6 * 3600 * 1000;
+          return data.sessionToken;
+        }
+        throw new Error('No sessionToken in identify response');
+      } finally {
+        this.datacatIdentifyPromise = null;
+      }
+    })();
+
+    return this.datacatIdentifyPromise;
+  }
 
   // Client-side memory cache so switching tabs (Trending <-> Popular <-> Latest) is 0ms instant
   private clientQueryCache = new Map<
@@ -235,7 +297,178 @@ class CommunityCatalogService {
   }
 
   /**
-   * Search / Browse community characters (with client cache + SPA fallback)
+   * Direct mobile/APK client query to Datacat.run (JanitorAI database)
+   */
+  private async fetchDirectDatacat(params: {
+    search?: string;
+    tagIds?: string;
+    limit?: number;
+    offset?: number;
+    sort?: 'recent' | 'fresh' | 'popular' | 'trending' | 'latest';
+    sfwOnly?: boolean;
+  }): Promise<{
+    characters: CommunityCharacter[];
+    totalCount: number;
+    hasMore: boolean;
+  }> {
+    const sessionToken = await this.ensureDatacatSession();
+    const limit = params.limit || 24;
+    const offset = params.offset || 0;
+    const fetchLimit =
+      params.sort === 'popular' || params.sort === 'trending'
+        ? Math.min(60, Math.max(limit * 2, 48))
+        : limit;
+
+    const query = new URLSearchParams({
+      limit: String(fetchLimit),
+      offset: String(offset),
+      summary: '1',
+      skipCount: '1'
+    });
+    if (params.search?.trim()) query.set('search', params.search.trim());
+    if (params.tagIds?.trim()) query.set('tagIds', params.tagIds.trim());
+
+    const res = await fetch(`https://datacat.run/api/characters/recent-public?${query.toString()}`, {
+      headers: {
+        'X-Session-Token': sessionToken,
+        Origin: 'https://datacat.run',
+        Referer: 'https://datacat.run/'
+      }
+    });
+
+    if (!res.ok) {
+      throw new Error(`Direct Datacat query failed (${res.status})`);
+    }
+
+    const data = await res.json();
+    const rawList: any[] = data.characters || [];
+
+    let characters: CommunityCharacter[] = rawList.map(item => {
+      const candidate =
+        item.avatarVariantUrls?.card ||
+        item.avatarVariantUrls?.hero ||
+        item.avatarVariantUrls?.raw ||
+        item.avatarDisplayUrl ||
+        item.avatar ||
+        'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=500';
+
+      const avatarUrl = getHighResImageUrl(candidate);
+
+      return {
+        id: item.characterId || item.id,
+        characterId: item.characterId || item.id,
+        name: item.name || 'Unnamed Character',
+        chatName: item.name || '',
+        creatorName: cleanCreatorHandle(item.creatorName || item.creator_name || 'community'),
+        avatarUrl,
+        shortDescription: (item.description || item.personality || '').slice(0, 260),
+        isNsfw: Boolean(item.nsfw || item.is_nsfw || item.rating === 'nsfw'),
+        totalTokens: Number(item.totalTokens || item.tokenCount) || 850,
+        chatCount: item.stats?.chat || 0,
+        messageCount: item.stats?.message || 0,
+        favoritesCount: item.stats?.favoritesCount?.favoritesCount || item.stats?.favorites || 0,
+        tags: Array.isArray(item.tags)
+          ? item.tags.map((t: any) => ({
+              id: t.id,
+              name: t.name || String(t),
+              slug: t.slug || String(t).toLowerCase().replace(/\s+/g, '-')
+            }))
+          : [],
+        firstPublishedAt: item.firstPublishedAt || item.first_published_at,
+        createdAt: item.createdAt || item.created_at
+      };
+    });
+
+    if (params.sfwOnly) {
+      characters = characters.filter(c => !c.isNsfw);
+    }
+
+    if (params.sort === 'popular') {
+      characters.sort((a, b) => {
+        const scoreA = (a.chatCount || 0) * 3 + (a.messageCount || 0) + (a.favoritesCount || 0) * 5;
+        const scoreB = (b.chatCount || 0) * 3 + (b.messageCount || 0) + (b.favoritesCount || 0) * 5;
+        return scoreB - scoreA;
+      });
+    } else if (params.sort === 'trending') {
+      const now = Date.now();
+      characters.sort((a, b) => {
+        const timeA = new Date(a.firstPublishedAt || a.createdAt || now).getTime();
+        const timeB = new Date(b.firstPublishedAt || b.createdAt || now).getTime();
+        const hoursA = Math.max(1, (now - timeA) / 3600000);
+        const hoursB = Math.max(1, (now - timeB) / 3600000);
+        const engagementA = (a.chatCount || 0) * 2 + (a.favoritesCount || 0) * 6 + (a.messageCount || 0) * 0.5 + 15;
+        const engagementB = (b.chatCount || 0) * 2 + (b.favoritesCount || 0) * 6 + (b.messageCount || 0) * 0.5 + 15;
+        return engagementB / Math.pow(hoursB + 2, 0.6) - engagementA / Math.pow(hoursA + 2, 0.6);
+      });
+    }
+
+    const paged = characters.slice(0, limit);
+
+    return {
+      characters: paged,
+      totalCount: 50000,
+      hasMore: characters.length >= limit
+    };
+  }
+
+  /**
+   * Fetch single character directly from Datacat API
+   */
+  private async fetchDirectDatacatDetail(id: string): Promise<CommunityCharacterDetail> {
+    const sessionToken = await this.ensureDatacatSession();
+    const res = await fetch(`https://datacat.run/api/characters/${encodeURIComponent(id)}`, {
+      headers: {
+        'X-Session-Token': sessionToken,
+        Origin: 'https://datacat.run',
+        Referer: 'https://datacat.run/'
+      }
+    });
+    if (!res.ok) throw new Error(`Datacat detail status ${res.status}`);
+    const data = await res.json();
+    const c = data.character || data;
+
+    const candidate =
+      c.avatarVariantUrls?.hero ||
+      c.avatarVariantUrls?.card ||
+      c.avatarVariantUrls?.raw ||
+      c.avatarDisplayUrl ||
+      c.avatar ||
+      'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=500';
+
+    const avatarUrl = getHighResImageUrl(candidate);
+
+    return {
+      id: c.character_id || c.characterId || id,
+      characterId: c.character_id || c.characterId || id,
+      name: c.name || 'Character',
+      chatName: c.name || '',
+      creatorName: cleanCreatorHandle(c.creatorName || c.creator_name || 'community'),
+      avatarUrl,
+      shortDescription: (c.description || c.personality || '').slice(0, 260),
+      isNsfw: Boolean(c.nsfw || c.is_nsfw || c.rating === 'nsfw'),
+      totalTokens: Number(c.totalTokens || c.tokenCount) || 850,
+      chatCount: c.stats?.chat || 0,
+      messageCount: c.stats?.message || 0,
+      favoritesCount: c.stats?.favoritesCount?.favoritesCount || c.stats?.favorites || 0,
+      tags: Array.isArray(c.tags)
+        ? c.tags.map((t: any) => ({
+            id: t.id,
+            name: t.name || String(t),
+            slug: t.slug || String(t).toLowerCase().replace(/\s+/g, '-')
+          }))
+        : [],
+      firstPublishedAt: c.firstPublishedAt || c.first_published_at,
+      createdAt: c.createdAt || c.created_at,
+      firstMessage: c.firstMessage || c.first_message || '',
+      personality: c.personality || '',
+      scenario: c.scenario || '',
+      descriptionHtml: c.descriptionHtml || c.description_html || c.description || '',
+      alternateGreetings: Array.isArray(c.alternateGreetings) ? c.alternateGreetings : []
+    };
+  }
+
+  /**
+   * Search / Browse community characters (with client cache + dynamic Janitor/Chub source selection)
    */
   public async getCharacters(params: {
     search?: string;
@@ -246,11 +479,13 @@ class CommunityCatalogService {
     creators?: string;
     sfwOnly?: boolean;
     forceRefresh?: boolean;
+    source?: CommunityCatalogSource;
   }): Promise<{
     characters: CommunityCharacter[];
     totalCount: number;
     hasMore: boolean;
   }> {
+    const activeSource = params.source || this.getActiveSource();
     const q = new URLSearchParams();
     if (params.search?.trim()) q.set('search', params.search.trim());
     if (params.tagIds?.trim()) q.set('tagIds', params.tagIds.trim());
@@ -259,6 +494,7 @@ class CommunityCatalogService {
     if (params.sort) q.set('sort', params.sort);
     if (params.creators?.trim()) q.set('creators', params.creators.trim());
     if (params.sfwOnly) q.set('sfwOnly', '1');
+    q.set('source', activeSource);
 
     const cacheKey = q.toString();
     const now = Date.now();
@@ -275,6 +511,18 @@ class CommunityCatalogService {
     const ttlMs =
       params.sort === 'popular' || params.sort === 'trending' ? 3 * 60 * 1000 : 90 * 1000;
 
+    // 1. If active source is explicitly Chub.ai, fetch directly from Chub
+    if (activeSource === 'chub') {
+      try {
+        const chubPayload = await this.fetchDirectBrowserFallback(params);
+        this.clientQueryCache.set(cacheKey, { data: chubPayload, expiresAt: now + ttlMs });
+        return chubPayload;
+      } catch (err) {
+        console.warn('[CommunityCatalogService] Chub search error:', err);
+      }
+    }
+
+    // 2. Active source is JanitorAI: try proxy first, then direct Datacat, then fallback to Chub
     try {
       const res = await this.fetchWithFallback(`/api/community/characters?${q.toString()}`);
       const data = await res.json();
@@ -291,15 +539,19 @@ class CommunityCatalogService {
 
       this.clientQueryCache.set(cacheKey, { data: payload, expiresAt: now + ttlMs });
       return payload;
-    } catch (proxyErr) {
-      if (cached) {
-        return cached.data;
+    } catch {
+      // Direct Datacat on standalone Android APK
+      try {
+        const directPayload = await this.fetchDirectDatacat(params);
+        this.clientQueryCache.set(cacheKey, { data: directPayload, expiresAt: now + ttlMs });
+        return directPayload;
+      } catch {
+        // Fallback to Chub if Datacat fails
+        console.info('[CommunityCatalogService] Fallback to Chub catalog');
+        const fallbackPayload = await this.fetchDirectBrowserFallback(params);
+        this.clientQueryCache.set(cacheKey, { data: fallbackPayload, expiresAt: now + ttlMs });
+        return fallbackPayload;
       }
-      // If deployed as a standalone static Single-Page Web App (no local proxy), use direct browser fallback
-      console.info('[CommunityCatalogService] Using direct browser SPA catalog fallback');
-      const fallbackPayload = await this.fetchDirectBrowserFallback(params);
-      this.clientQueryCache.set(cacheKey, { data: fallbackPayload, expiresAt: now + ttlMs });
-      return fallbackPayload;
     }
   }
 
@@ -313,17 +565,29 @@ class CommunityCatalogService {
       return cached.data;
     }
 
-    try {
-      const res = await this.fetchWithFallback(`/api/community/characters/${encodeURIComponent(id)}`);
-      const data = await res.json();
+    // Chub.ai characters have slashes in their ID (creator/character-slug)
+    const isChubCharacter = id.includes('/');
 
-      if (!data.success || !data.character) {
-        throw new Error(data.error || 'Failed to fetch character detail');
+    if (!isChubCharacter) {
+      try {
+        const res = await this.fetchWithFallback(
+          `/api/community/characters/${encodeURIComponent(id)}`
+        );
+        const data = await res.json();
+
+        if (data.success && data.character) {
+          this.clientDetailCache.set(id, { data: data.character, expiresAt: now + 10 * 60 * 1000 });
+          return data.character;
+        }
+      } catch {
+        // Try direct Datacat
+        try {
+          const detail = await this.fetchDirectDatacatDetail(id);
+          this.clientDetailCache.set(id, { data: detail, expiresAt: now + 10 * 60 * 1000 });
+          return detail;
+        } catch {}
       }
-
-      this.clientDetailCache.set(id, { data: data.character, expiresAt: now + 10 * 60 * 1000 });
-      return data.character;
-    } catch {
+    }
       // Standalone APK / SPA fallback via Chub public API
       const chubRes = await fetch(`https://api.chub.ai/api/characters/${id}?full=true`, {
         headers: { Accept: 'application/json' }
@@ -382,7 +646,6 @@ class CommunityCatalogService {
 
       this.clientDetailCache.set(id, { data: detail, expiresAt: now + 10 * 60 * 1000 });
       return detail;
-    }
   }
 
   /**

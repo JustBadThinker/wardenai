@@ -6,7 +6,8 @@ import { CommunityCharacterModal } from '../components/character/CommunityCharac
 import {
   communityCatalogService,
   CommunityCharacter,
-  CommunityCharacterDetail
+  CommunityCharacterDetail,
+  CommunityCatalogSource
 } from '../services/communityCatalogService';
 import { ImportedCardData } from '../services/characterImportService';
 import { storageService, FollowedCreatorEntry } from '../services/storageService';
@@ -61,6 +62,24 @@ export const HomeView: React.FC<HomeViewProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<HomeQuickTab>('trending');
   const [ratingMode, setRatingMode] = useState<'all' | 'limited'>('all');
+  const [catalogSource, setCatalogSource] = useState<CommunityCatalogSource>(() =>
+    communityCatalogService.getActiveSource()
+  );
+
+  const handleSourceChange = (source: CommunityCatalogSource) => {
+    communityCatalogService.setActiveSource(source);
+    setCatalogSource(source);
+  };
+
+  useEffect(() => {
+    const handleSourceChanged = (e: any) => {
+      if (e.detail?.source) {
+        setCatalogSource(e.detail.source);
+      }
+    };
+    window.addEventListener('warden:catalog-source-changed', handleSourceChanged);
+    return () => window.removeEventListener('warden:catalog-source-changed', handleSourceChanged);
+  }, []);
 
   // Community catalog state for Home Quick Tabs
   const [communityChars, setCommunityChars] = useState<CommunityCharacter[]>([]);
@@ -150,6 +169,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
         limit: 24,
         sort: sortParam,
         sfwOnly: ratingMode === 'limited',
+        source: catalogSource,
         forceRefresh
       });
       setCommunityChars(res.characters);
@@ -158,7 +178,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
     } finally {
       setIsLoadingCommunity(false);
     }
-  }, [activeTab, ratingMode, currentUser.id]);
+  }, [activeTab, ratingMode, catalogSource, currentUser.id]);
 
   useEffect(() => {
     fetchQuickTabFeed();
@@ -426,6 +446,34 @@ export const HomeView: React.FC<HomeViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Catalog Source Switcher (JanitorAI <-> Chub.ai) */}
+          <div className="flex items-center bg-[#131622] p-0.5 rounded-lg border border-[#262b3d]">
+            <button
+              type="button"
+              onClick={() => handleSourceChange('janitor')}
+              className={`px-2 py-1 text-[11px] font-bold rounded-md transition-all cursor-pointer ${
+                catalogSource === 'janitor'
+                  ? 'bg-purple-600 text-white shadow-xs'
+                  : 'text-neutral-400 hover:text-white'
+              }`}
+              title="Browse JanitorAI characters"
+            >
+              JanitorAI
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSourceChange('chub')}
+              className={`px-2 py-1 text-[11px] font-bold rounded-md transition-all cursor-pointer ${
+                catalogSource === 'chub'
+                  ? 'bg-purple-600 text-white shadow-xs'
+                  : 'text-neutral-400 hover:text-white'
+              }`}
+              title="Browse Chub.ai / Charhub characters"
+            >
+              Chub.ai
+            </button>
+          </div>
+
           <button
             onClick={() => fetchQuickTabFeed(true)}
             disabled={isLoadingCommunity}

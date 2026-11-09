@@ -38,7 +38,8 @@ import {
   CommunityCharacter,
   CommunityCharacterDetail,
   POPULAR_COMMUNITY_CATEGORIES,
-  communityCatalogService
+  communityCatalogService,
+  CommunityCatalogSource
 } from '../services/communityCatalogService';
 import { CommunityCharacterCard } from '../components/character/CommunityCharacterCard';
 import { CommunityCharacterModal } from '../components/character/CommunityCharacterModal';
@@ -195,6 +196,26 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
   const [libraryCategory, setLibraryCategory] = useState<string>('all');
   const [librarySort, setLibrarySort] = useState<'trending' | 'latest' | 'popular'>('trending');
   const [isTagDrawerOpen, setIsTagDrawerOpen] = useState(false);
+  const [catalogSource, setCatalogSource] = useState<CommunityCatalogSource>(() =>
+    communityCatalogService.getActiveSource()
+  );
+
+  const handleSourceChange = (source: CommunityCatalogSource) => {
+    communityCatalogService.setActiveSource(source);
+    setCatalogSource(source);
+    setCurrentPage(1);
+  };
+
+  useEffect(() => {
+    const handleSourceChanged = (e: any) => {
+      if (e.detail?.source && e.detail.source !== catalogSource) {
+        setCatalogSource(e.detail.source);
+        setCurrentPage(1);
+      }
+    };
+    window.addEventListener('warden:catalog-source-changed', handleSourceChanged);
+    return () => window.removeEventListener('warden:catalog-source-changed', handleSourceChanged);
+  }, [catalogSource]);
 
   // Toast notification for imports & follows
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -286,6 +307,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
             offset: (pageNum - 1) * PAGE_SIZE,
             sort: communitySort,
             sfwOnly,
+            source: catalogSource,
             forceRefresh
           });
 
@@ -318,6 +340,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
           offset,
           sort: communitySort,
           sfwOnly,
+          source: catalogSource,
           forceRefresh
         });
 
@@ -348,6 +371,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
       communitySearch,
       communitySelectedCategories,
       communitySort,
+      catalogSource,
       currentUserId
     ]
   );
@@ -361,6 +385,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
     communitySearch,
     communitySelectedCategories,
     communitySort,
+    catalogSource,
     scopeMode,
     sfwOnly,
     currentPage,
@@ -620,6 +645,34 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
         <div className="flex items-center gap-2">
           {activeTab === 'community' && (
             <>
+              {/* Catalog Source Switcher: JanitorAI <-> Chub.ai */}
+              <div className="flex items-center bg-[#12151e] p-0.5 rounded-lg border border-[#1b1e28]">
+                <button
+                  type="button"
+                  onClick={() => handleSourceChange('janitor')}
+                  className={`px-2 py-1 text-[11px] font-bold rounded-md transition-all cursor-pointer ${
+                    catalogSource === 'janitor'
+                      ? 'bg-purple-600 text-white shadow-xs'
+                      : 'text-neutral-400 hover:text-white'
+                  }`}
+                  title="Browse JanitorAI characters"
+                >
+                  JanitorAI
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSourceChange('chub')}
+                  className={`px-2 py-1 text-[11px] font-bold rounded-md transition-all cursor-pointer ${
+                    catalogSource === 'chub'
+                      ? 'bg-purple-600 text-white shadow-xs'
+                      : 'text-neutral-400 hover:text-white'
+                  }`}
+                  title="Browse Chub.ai / Charhub characters"
+                >
+                  Chub.ai
+                </button>
+              </div>
+
               {onOpenImportModal && (
                 <button
                   onClick={onOpenImportModal}

@@ -523,6 +523,10 @@ export default function App() {
       updatedAt: new Date().toISOString()
     };
 
+    // Ensure character is persisted to storage so it never disappears on refresh / mobile resume
+    storageService.upsertCharacter(char);
+    setCharacters(storageService.getCharacters());
+
     const saved = storageService.upsertConversation(newConv);
     setConversations(storageService.getConversations(currentUser.id));
     setSelectedCharacter(char);
@@ -537,6 +541,66 @@ export default function App() {
       const allStored = storageService.getCharacters();
       char = allStored.find(c => c.id === conv.characterId);
     }
+    // Auto-recover orphaned character from conversation metadata if not found in storage
+    if (!char && conv.characterId) {
+      const rawTitle = conv.title || 'Character';
+      const parsedName = rawTitle.includes(' · ')
+        ? rawTitle.split(' · ')[0].trim()
+        : rawTitle.includes(' — ')
+        ? rawTitle.split(' — ')[0].trim()
+        : rawTitle;
+      const firstCharMsg = conv.messages.find(
+        m => m.sender === 'character' || m.senderRole === 'assistant'
+      );
+      const scenarioTitle =
+        conv.scenarioTitle ||
+        (rawTitle.includes(' · ') ? rawTitle.split(' · ')[1].trim() : 'Initial Encounter');
+
+      char = {
+        id: conv.characterId,
+        creatorId: currentUser.id,
+        creatorUsername: 'Community',
+        creatorAvatar: currentUser.avatarUrl,
+        name: parsedName,
+        subtitle: scenarioTitle,
+        avatarUrl:
+          'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=500',
+        shortDescription: `${parsedName} — Roleplay character (auto-recovered).`,
+        personality: 'Engaging, expressive, and true to persona.',
+        background: 'Auto-recovered roleplay conversation context.',
+        systemPrompt: `You are ${parsedName}. Embody their personality in every response.`,
+        firstMessage: firstCharMsg?.content || '',
+        exampleDialogue: '',
+        contentRating: 'Mature',
+        visibility: 'public',
+        publicationStatus: 'published',
+        scenarios: [
+          {
+            id: conv.scenarioId || 'sc_recovered_' + Date.now().toString(36),
+            characterId: conv.characterId,
+            title: scenarioTitle,
+            description: 'Roleplay scenario.',
+            openingMessage: firstCharMsg?.content || '',
+            scenarioInstructions: 'Roleplay scenario.',
+            displayOrder: 1,
+            createdAt: conv.createdAt,
+            updatedAt: conv.updatedAt
+          }
+        ],
+        tagSlugs: ['community'],
+        likeCount: 1,
+        bookmarkCount: 1,
+        chatCount: 1,
+        createdAt: conv.createdAt,
+        updatedAt: conv.updatedAt,
+        age: 20
+      };
+      if (char) {
+        storageService.upsertCharacter(char);
+        setCharacters(storageService.getCharacters());
+      }
+    }
+
     if (char) {
       setSelectedCharacter(char);
       const sc = char.scenarios?.find(s => s.id === conv.scenarioId) || char.scenarios?.[0];
@@ -966,16 +1030,77 @@ export default function App() {
                   updatedAt: new Date().toISOString(),
                   messageCount: 0
                 };
-              const activeChar =
+              let activeChar =
                 (activeConv?.characterId ? characters.find(c => c.id === activeConv.characterId) : null) ||
-                selectedCharacter ||
-                characters[0];
+                (activeConv?.characterId ? storageService.getCharacters().find(c => c.id === activeConv.characterId) : null) ||
+                selectedCharacter;
+
+              if (!activeChar && activeConv?.characterId) {
+                const rawTitle = activeConv.title || 'Character';
+                const parsedName = rawTitle.includes(' · ')
+                  ? rawTitle.split(' · ')[0].trim()
+                  : rawTitle.includes(' — ')
+                  ? rawTitle.split(' — ')[0].trim()
+                  : rawTitle;
+                const firstCharMsg = activeConv.messages.find(
+                  m => m.sender === 'character' || m.senderRole === 'assistant'
+                );
+                const scenarioTitle =
+                  activeConv.scenarioTitle ||
+                  (rawTitle.includes(' · ') ? rawTitle.split(' · ')[1].trim() : 'Initial Encounter');
+
+                activeChar = {
+                  id: activeConv.characterId,
+                  creatorId: currentUser.id,
+                  creatorUsername: 'Community',
+                  creatorAvatar: currentUser.avatarUrl,
+                  name: parsedName,
+                  subtitle: scenarioTitle,
+                  avatarUrl:
+                    'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=500',
+                  shortDescription: `${parsedName} — Roleplay character (auto-recovered).`,
+                  personality: 'Engaging, expressive, and true to persona.',
+                  background: 'Auto-recovered roleplay conversation context.',
+                  systemPrompt: `You are ${parsedName}. Embody their personality in every response.`,
+                  firstMessage: firstCharMsg?.content || '',
+                  exampleDialogue: '',
+                  contentRating: 'Mature',
+                  visibility: 'public',
+                  publicationStatus: 'published',
+                  scenarios: [
+                    {
+                      id: activeConv.scenarioId || 'sc_1',
+                      characterId: activeConv.characterId,
+                      title: scenarioTitle,
+                      description: 'Roleplay scenario.',
+                      openingMessage: firstCharMsg?.content || '',
+                      scenarioInstructions: 'Roleplay scenario.',
+                      displayOrder: 1,
+                      createdAt: activeConv.createdAt,
+                      updatedAt: activeConv.updatedAt
+                    }
+                  ],
+                  tagSlugs: ['community'],
+                  likeCount: 1,
+                  bookmarkCount: 1,
+                  chatCount: 1,
+                  createdAt: activeConv.createdAt,
+                  updatedAt: activeConv.updatedAt,
+                  age: 20
+                };
+                if (activeChar) {
+                  storageService.upsertCharacter(activeChar);
+                }
+              }
+
+              const resolvedChar = activeChar || characters[0];
+              if (!resolvedChar) return null;
 
               return (
                 <ChatView
-                  key={`${activeConv.id}_${activeChar.id}`}
+                  key={`${activeConv.id}_${resolvedChar.id}`}
                   conversation={activeConv}
-                  character={activeChar}
+                  character={resolvedChar}
                   scenario={activeScenario}
                   persona={
                     (activeConv?.personaId ? personas.find(p => p.id === activeConv.personaId) : null) ||
