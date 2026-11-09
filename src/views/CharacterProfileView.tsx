@@ -36,6 +36,7 @@ import { Character, CharacterScenario, CharacterReview, Persona, User as UserMod
 import { RichTextRenderer } from '../components/common/RichTextRenderer';
 import { cleanCreatorHandle } from '../services/aiProviderService';
 import { storageService } from '../services/storageService';
+import { ImageLightboxModal } from '../components/common/ImageLightboxModal';
 import {
   buildJanitorCreationFields,
   downloadJanitorMarkdown
@@ -84,6 +85,7 @@ export const CharacterProfileView: React.FC<CharacterProfileViewProps> = ({
   const [activeTab, setActiveTab] = useState<ProfileTab>('about');
   const [isFollowing, setIsFollowing] = useState(isFollowingCreator);
   const [showMenu, setShowMenu] = useState(false);
+  const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string } | null>(null);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [exportFormat, setExportFormat] = useState<'png' | 'ccv2' | 'warden' | 'janitor'>('png');
   const [isExportingPng, setIsExportingPng] = useState(false);
@@ -199,7 +201,9 @@ export const CharacterProfileView: React.FC<CharacterProfileViewProps> = ({
           src={character.coverUrl || character.avatarUrl}
           alt={character.name}
           referrerPolicy="no-referrer"
-          className="w-full h-full object-cover object-top"
+          onClick={() => setLightboxImage({ url: character.coverUrl || character.avatarUrl, title: character.name })}
+          className="w-full h-full object-cover object-top cursor-pointer hover:scale-105 transition-transform duration-500"
+          title="Click to view full HD artwork"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-[#0c0e14] via-[#0c0e14]/40 to-black/50" />
 
@@ -214,12 +218,32 @@ export const CharacterProfileView: React.FC<CharacterProfileViewProps> = ({
           </button>
         </div>
 
-        {/* Top-Right Menu */}
-        <div className="absolute top-4 right-4 z-10">
+        {/* Top-Right Actions: Quick Chat + Download HD Art + Menu */}
+        <div className="absolute top-4 right-4 z-10 flex items-center gap-2">
+          {/* Quick Chat */}
+          <button
+            onClick={handleStartChat}
+            className="px-3.5 py-1.5 rounded-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-purple-600/40 backdrop-blur-md border border-white/20 active:scale-95 transition-all cursor-pointer"
+            title="Start chat immediately"
+          >
+            <Play className="w-3.5 h-3.5 fill-current" />
+            <span>Chat</span>
+          </button>
+
+          {/* Download HD Artwork */}
+          <button
+            onClick={() => setLightboxImage({ url: character.coverUrl || character.avatarUrl, title: character.name })}
+            className="w-9 h-9 rounded-full bg-black/60 hover:bg-black/80 backdrop-blur-md flex items-center justify-center text-neutral-300 hover:text-white transition-all cursor-pointer border border-white/10 active:scale-95"
+            title="View & Download HD Artwork"
+          >
+            <Download className="w-4 h-4 text-purple-300" />
+          </button>
+
           <div className="relative">
             <button
               onClick={() => setShowMenu(!showMenu)}
               className="w-9 h-9 rounded-full bg-black/60 hover:bg-black/80 backdrop-blur-md flex items-center justify-center text-white transition-all cursor-pointer border border-white/10"
+              title="More options"
             >
               <MoreVertical className="w-5 h-5" />
             </button>
@@ -280,12 +304,16 @@ export const CharacterProfileView: React.FC<CharacterProfileViewProps> = ({
         <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4 w-full min-w-0">
           <div className="flex items-end gap-3.5 sm:gap-4 w-full min-w-0 flex-1">
             {/* Square Overlapping Avatar */}
-            <div className="relative w-20 h-20 sm:w-28 sm:h-28 rounded-2xl overflow-hidden bg-[#0c0e14] border-2 border-[#1b1e28] shadow-2xl shrink-0">
+            <div
+              onClick={() => setLightboxImage({ url: character.avatarUrl, title: character.name })}
+              className="relative w-20 h-20 sm:w-28 sm:h-28 rounded-2xl overflow-hidden bg-[#0c0e14] border-2 border-[#1b1e28] shadow-2xl shrink-0 cursor-pointer group"
+              title="Click to view & download HD avatar"
+            >
               <img
                 src={character.avatarUrl}
                 alt={character.name}
                 referrerPolicy="no-referrer"
-                className="w-full h-full object-cover"
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
               />
             </div>
 
@@ -312,8 +340,17 @@ export const CharacterProfileView: React.FC<CharacterProfileViewProps> = ({
             </div>
           </div>
 
-          {/* Action Row: Fork + Export + Follow Button + 3-dots */}
+          {/* Action Row: Start Chat (Primary) + Fork + Export + Follow Button + 3-dots */}
           <div className="flex items-center flex-wrap gap-2 self-start sm:self-end shrink-0">
+            {/* Primary Action: Start Chat Now */}
+            <button
+              onClick={handleStartChat}
+              className="px-5 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-purple-600/35 transition-all cursor-pointer active:scale-95"
+            >
+              <Play className="w-4 h-4 fill-current" />
+              <span>Start Chat</span>
+            </button>
+
             {onForkCharacter && (
               <button
                 onClick={() => onForkCharacter(character)}
@@ -1095,6 +1132,32 @@ export const CharacterProfileView: React.FC<CharacterProfileViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Mobile Floating Sticky Bottom Chat Bar */}
+      <div className="fixed bottom-0 inset-x-0 p-3 bg-[#0d1018]/95 backdrop-blur-xl border-t border-white/10 z-30 flex items-center gap-2.5 sm:hidden">
+        <button
+          onClick={() => onToggleBookmark(character.id)}
+          className="w-10 h-10 rounded-xl bg-[#161a26] border border-[#222736] flex items-center justify-center text-neutral-300 active:scale-95 transition-all"
+          title={isBookmarked ? 'Bookmarked' : 'Bookmark'}
+        >
+          <Bookmark className={`w-4 h-4 ${isBookmarked ? 'fill-purple-400 text-purple-400' : ''}`} />
+        </button>
+        <button
+          onClick={handleStartChat}
+          className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-purple-600/35 active:scale-95 transition-all cursor-pointer"
+        >
+          <Play className="w-4 h-4 fill-current" />
+          <span>Start Chat</span>
+        </button>
+      </div>
+
+      {/* Lightbox Modal for HD character preview & download */}
+      <ImageLightboxModal
+        isOpen={Boolean(lightboxImage)}
+        onClose={() => setLightboxImage(null)}
+        imageUrl={lightboxImage?.url || ''}
+        title={lightboxImage?.title}
+      />
     </div>
   );
 };
