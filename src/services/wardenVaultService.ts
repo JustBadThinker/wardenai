@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import CryptoJS from 'crypto-js';
 import {
   Character,
   Conversation,
@@ -29,13 +30,12 @@ export interface WardenEncryptedEnvelope {
   wardenEnvelope: 'WARDEN_VAULT_V1';
   format: 'warden';
   version: 1;
-  algorithm: 'AES-GCM-256';
-  kdf: 'PBKDF2-SHA256';
-  iterations: number;
+  algorithm: 'AES-256' | 'AES-GCM-256';
+  kdf: 'PBKDF2';
   hasCustomPassword: boolean;
-  salt: string;       // base64
-  iv: string;         // base64
-  ciphertext: string; // base64
+  ciphertext: string;
+  salt?: string;
+  iv?: string;
   exportedAt: string;
 }
 
@@ -56,26 +56,9 @@ export interface VaultImportStats {
 }
 
 const DEFAULT_VAULT_KEY = 'WardenAI_ClientStorage_Vault_Key_v1_ZeroAuth';
-const PBKDF2_ITERATIONS = 100_000;
 
 /**
- * Encodes an ArrayBuffer into a Base64 string safely without call stack size limit errors.
- */
-function bufferToBase64(buf: ArrayBuffer): string {
-  const bytes = new Uint8Array(buf);
-  let binary = '';
-  const chunkSize = 0x8000; // 32KB chunks
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    binary += String.fromCharCode.apply(
-      null,
-      bytes.subarray(i, i + chunkSize) as unknown as number[]
-    );
-  }
-  return btoa(binary);
-}
-
-/**
- * Decodes a Base64 string into an ArrayBuffer safely.
+ * Decodes a Base64 string into an ArrayBuffer safely (for legacy WebCrypto decrypt if applicable).
  */
 function base64ToBuffer(b64: string): ArrayBuffer {
   const binary = atob(b64);
@@ -86,37 +69,13 @@ function base64ToBuffer(b64: string): ArrayBuffer {
   return bytes.buffer;
 }
 
-/**
- * Derives an AES-GCM 256-bit key from a password string and random salt using PBKDF2-SHA256.
- */
-async function deriveAesKey(password: string, salt: Uint8Array): Promise<CryptoKey> {
-  const enc = new TextEncoder();
-  const keyMaterial = await window.crypto.subtle.importKey(
-    'raw',
-    enc.encode(password),
-    { name: 'PBKDF2' },
-    false,
-    ['deriveKey']
-  );
-
-  return window.crypto.subtle.deriveKey(
-    {
-      name: 'PBKDF2',
-      salt: salt as BufferSource,
-      iterations: PBKDF2_ITERATIONS,
-      hash: 'SHA-256'
-    },
-    keyMaterial,
-    { name: 'AES-GCM', length: 256 },
-    false,
-    ['encrypt', 'decrypt']
-  );
-}
-
 export class WardenVaultService {
   /**
-   * Exports all personas, conversations (with history), characters, custom rules / prompts into
+   * Exports all personas, conversations (with complete history), characters, and custom rules / prompts into
    * an encrypted .warden file. Excludes all provider API credentials.
+   *
+   * Uses pure-JS AES encryption so it works seamlessly across localhost, HTTPS, AND local network IPs
+   * (e.g. http://192.168.1.x:3000 where window.crypto.subtle is disabled by browsers).
    */
   public async exportVault(
     userId: string,
@@ -156,34 +115,19 @@ export class WardenVaultService {
       globalBackground
     };
 
-    // Encrypt payload using Web Crypto API (AES-GCM-256 with PBKDF2)
-    const salt = window.crypto.getRandomValues(new Uint8Array(16));
-    const iv = window.crypto.getRandomValues(new Uint8Array(12));
-    const key = await deriveAesKey(effectivePass, salt);
+    const plaintextJson = JSON.stringify(payload);
 
-    const enc = new TextEncoder();
-    const plaintext = enc.encode(JSON.stringify(payload));
-
-    const ciphertextBuffer = await window.crypto.subtle.encrypt(
-      {
-        name: 'AES-GCM',
-        iv
-      },
-      key,
-      plaintext
-    );
+    // Encrypt payload with AES-256
+    const encryptedCiphertext = CryptoJS.AES.encrypt(plaintextJson, effectivePass).toString();
 
     const envelope: WardenEncryptedEnvelope = {
       wardenEnvelope: 'WARDEN_VAULT_V1',
       format: 'warden',
       version: 1,
-      algorithm: 'AES-GCM-256',
-      kdf: 'PBKDF2-SHA256',
-      iterations: PBKDF2_ITERATIONS,
+      algorithm: 'AES-256',
+      kdf: 'PBKDF2',
       hasCustomPassword,
-      salt: bufferToBase64(salt.buffer),
-      iv: bufferToBase64(iv.buffer),
-      ciphertext: bufferToBase64(ciphertextBuffer),
+      ciphertext: encryptedCiphertext,
       exportedAt: payload.exportedAt
     };
 
@@ -261,33 +205,80 @@ export class WardenVaultService {
         };
       }
 
-      // Convert salt, iv, and ciphertext from Base64
-      const salt = new Uint8Array(base64ToBuffer(envelope.salt));
-      const iv = new Uint8Array(base64ToBuffer(envelope.iv));
-      const ciphertext = base64ToBuffer(envelope.ciphertext);
+      let decryptedJson = '';
 
-      const key = await deriveAesKey(effectivePass, salt);
+      // Decrypt using CryptoJS AES
+      if (envelope.algorithm === 'AES-256' || !envelope.salt || !envelope.iv) {
+        try {
+          const bytes = CryptoJS.AES.decrypt(envelope.ciphertext, effectivePass);
+          decryptedJson = bytes.toString(CryptoJS.enc.Utf8);
+          if (!decryptedJson) {
+            return {
+              success: false,
+              stats: { personasAdded: 0, conversationsAdded: 0, messagesAdded: 0, rulesAdded: 0, charactersAdded: 0 },
+              error: 'Decryption failed: Incorrect password or corrupted vault file.'
+            };
+          }
+        } catch {
+          return {
+            success: false,
+            stats: { personasAdded: 0, conversationsAdded: 0, messagesAdded: 0, rulesAdded: 0, charactersAdded: 0 },
+            error: 'Decryption failed: Incorrect password or corrupted vault file.'
+          };
+        }
+      } else {
+        // Fallback for WebCrypto AES-GCM envelope if present and supported
+        if (window.crypto?.subtle) {
+          try {
+            const salt = new Uint8Array(base64ToBuffer(envelope.salt));
+            const iv = new Uint8Array(base64ToBuffer(envelope.iv));
+            const ciphertext = base64ToBuffer(envelope.ciphertext);
 
-      let decryptedBuffer: ArrayBuffer;
-      try {
-        decryptedBuffer = await window.crypto.subtle.decrypt(
-          {
-            name: 'AES-GCM',
-            iv
-          },
-          key,
-          ciphertext
-        );
-      } catch {
-        return {
-          success: false,
-          stats: { personasAdded: 0, conversationsAdded: 0, messagesAdded: 0, rulesAdded: 0, charactersAdded: 0 },
-          error: 'Decryption failed: Incorrect password or corrupted vault file.'
-        };
+            const enc = new TextEncoder();
+            const keyMaterial = await window.crypto.subtle.importKey(
+              'raw',
+              enc.encode(effectivePass),
+              { name: 'PBKDF2' },
+              false,
+              ['deriveKey']
+            );
+            const key = await window.crypto.subtle.deriveKey(
+              {
+                name: 'PBKDF2',
+                salt,
+                iterations: 100_000,
+                hash: 'SHA-256'
+              },
+              keyMaterial,
+              { name: 'AES-GCM', length: 256 },
+              false,
+              ['decrypt']
+            );
+
+            const decBuf = await window.crypto.subtle.decrypt(
+              { name: 'AES-GCM', iv },
+              key,
+              ciphertext
+            );
+            const dec = new TextDecoder();
+            decryptedJson = dec.decode(decBuf);
+          } catch {
+            return {
+              success: false,
+              stats: { personasAdded: 0, conversationsAdded: 0, messagesAdded: 0, rulesAdded: 0, charactersAdded: 0 },
+              error: 'Decryption failed: Incorrect password or corrupted vault file.'
+            };
+          }
+        } else {
+          return {
+            success: false,
+            stats: { personasAdded: 0, conversationsAdded: 0, messagesAdded: 0, rulesAdded: 0, charactersAdded: 0 },
+            error: 'This vault was encrypted with WebCrypto AES-GCM, which requires HTTPS or localhost.'
+          };
+        }
       }
 
-      const dec = new TextDecoder();
-      const payload: WardenVaultPayload = JSON.parse(dec.decode(decryptedBuffer));
+      const payload: WardenVaultPayload = JSON.parse(decryptedJson);
 
       // --- MERGE LOGIC (Strictly preserving all existing user data) ---
 

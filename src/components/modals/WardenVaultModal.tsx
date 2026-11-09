@@ -53,6 +53,7 @@ export const WardenVaultModal: React.FC<WardenVaultModalProps> = ({
   const [exportPassword, setExportPassword] = useState('');
   const [showExportPassword, setShowExportPassword] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const [exportSuccess, setExportSuccess] = useState<VaultExportStats | null>(null);
 
   // Import State
@@ -94,6 +95,7 @@ export const WardenVaultModal: React.FC<WardenVaultModalProps> = ({
   const handleExport = async () => {
     setIsExporting(true);
     setExportSuccess(null);
+    setExportError(null);
     try {
       const { blob, filename, stats } = await wardenVaultService.exportVault(
         userId,
@@ -102,7 +104,7 @@ export const WardenVaultModal: React.FC<WardenVaultModalProps> = ({
       wardenVaultService.downloadVaultFile(blob, filename);
       setExportSuccess(stats);
     } catch (err: any) {
-      alert(`Export failed: ${err?.message || 'Unknown error'}`);
+      setExportError(err?.message || 'Export failed.');
     } finally {
       setIsExporting(false);
     }
@@ -305,6 +307,14 @@ export const WardenVaultModal: React.FC<WardenVaultModalProps> = ({
                 </p>
               </div>
 
+              {/* Error Notice */}
+              {exportError && (
+                <div className="p-3 rounded-xl bg-rose-950/30 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                  <span>{exportError}</span>
+                </div>
+              )}
+
               {/* Success Result Box */}
               {exportSuccess && (
                 <div className="p-3.5 rounded-xl bg-emerald-950/30 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2.5">
@@ -463,3 +473,4 @@ export const WardenVaultModal: React.FC<WardenVaultModalProps> = ({
     document.body
   );
 };
+
