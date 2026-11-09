@@ -276,7 +276,12 @@ export class TokenOptimizerService {
     customRules?: string;
   }): { systemPrompt: string; messages: ChatMessage[] } {
     const { character, scenario, persona, lorebooks, conversation, customRules } = options;
-    const chatCharName = extractCleanCharacterName(character.name, character.subtitle);
+    const chatCharName = extractCleanCharacterName(
+      character.name,
+      character.subtitle,
+      character.firstMessage,
+      character.personality
+    );
     const userName = persona?.name || 'User';
 
     const sections: string[] = [];
@@ -372,7 +377,12 @@ export class TokenOptimizerService {
     }
 
     const { character, scenario, persona, lorebooks, conversation, customRules } = options;
-    const chatCharName = extractCleanCharacterName(character.name, character.subtitle);
+    const chatCharName = extractCleanCharacterName(
+      character.name,
+      character.subtitle,
+      character.firstMessage,
+      character.personality
+    );
     const userName = persona?.name || 'User';
 
     // Deduplicate background against personality (many imported cards copy-paste the same text into both)

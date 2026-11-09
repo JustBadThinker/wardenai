@@ -4,6 +4,7 @@
  */
 
 import { Character, CharacterScenario, ContentRating, Lorebook, LorebookEntry, Tag } from '../types';
+import { extractCleanCharacterName } from './aiProviderService';
 
 export interface ImportedCardData {
   name: string;
@@ -497,18 +498,41 @@ export class CharacterImportService {
     // Unpack V2 / V3 data wrapper if present
     const data = raw.data ? raw.data : raw;
 
-    const name = this.sanitizeText(data.name || data.char_name || data.title || 'Unnamed Character');
-    const subtitle = this.sanitizeText(data.subtitle || data.tagline || data.short_description || '');
+    const chatName = this.sanitizeText(
+      data.chat_name ||
+      raw.chat_name ||
+      data.chatName ||
+      raw.chatName ||
+      data.char_name ||
+      ''
+    );
+    const rawTitle = this.sanitizeText(data.name || data.title || 'Unnamed Character');
+    const rawSubtitle = this.sanitizeText(data.subtitle || data.tagline || data.short_description || '');
 
     // Description / Appearance
     const rawDesc = data.description || data.char_persona || data.char_desc || '';
+    const rawPersonality = data.personality || data.char_personality || '';
+    const personality = this.sanitizeText(rawPersonality || rawDesc);
+
+    // Opening greetings (supports CCv2, JanitorAI, JannyAI, SillyTavern)
+    const rawFirstMes =
+      data.first_mes ||
+      data.greeting ||
+      data.first_message ||
+      data.initial_message ||
+      data.openingMessage ||
+      '';
+
+    const name =
+      chatName && chatName !== rawTitle && chatName.length <= 34
+        ? chatName
+        : extractCleanCharacterName(rawTitle, rawSubtitle, rawFirstMes, personality);
+
+    const subtitle = rawTitle !== name ? rawTitle : rawSubtitle;
+
     const shortDescription = this.sanitizeText(
       subtitle || (rawDesc.length > 250 ? rawDesc.substring(0, 247) + '...' : rawDesc)
     );
-
-    // Personality (preserve empty if completely absent so validation flags it)
-    const rawPersonality = data.personality || data.char_personality || '';
-    const personality = this.sanitizeText(rawPersonality || rawDesc);
 
     // Background / Scenario
     const scenario = this.sanitizeText(data.scenario || data.world_scenario || '');
@@ -516,14 +540,8 @@ export class CharacterImportService {
       rawDesc && rawDesc !== personality ? rawDesc : scenario || 'A character imported from community archives.'
     );
 
-    // Opening greetings (supports CCv2, JanitorAI, JannyAI, SillyTavern)
     const firstMessage = this.sanitizeText(
-      data.first_mes ||
-      data.greeting ||
-      data.first_message ||
-      data.initial_message ||
-      data.openingMessage ||
-      `*${name} observes you attentively.* "Welcome. I am ${name}."`
+      rawFirstMes || `*${name} observes you attentively.* "Welcome. I am ${name}."`
     );
 
     const alternateGreetings: string[] = Array.isArray(data.alternate_greetings)

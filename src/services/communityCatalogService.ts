@@ -5,7 +5,7 @@
 
 import { ImportedCardData, CharacterImportService } from './characterImportService';
 import { ContentRating } from '../types';
-import { cleanCreatorHandle } from './aiProviderService';
+import { cleanCreatorHandle, extractCleanCharacterName } from './aiProviderService';
 
 export interface CommunityCharacter {
   id: string;
@@ -354,7 +354,33 @@ class CommunityCatalogService {
     summary: CommunityCharacter,
     detail?: CommunityCharacterDetail
   ): ImportedCardData {
-    const name = CharacterImportService.sanitizeText(summary.name);
+    const rawTitle = CharacterImportService.sanitizeText(summary.name);
+    const candidateChatName = CharacterImportService.sanitizeText(
+      detail?.chatName || summary.chatName || detail?.rawCardV2?.data?.name || ''
+    );
+
+    const personality = CharacterImportService.sanitizeText(
+      detail?.personality || summary.shortDescription || 'Observant, adaptive and expressive companion.'
+    );
+
+    const firstMessage = CharacterImportService.sanitizeText(
+      detail?.firstMessage ||
+        `*${rawTitle} looks over at you, their gaze lingering with quiet interest.* "Hello there. What brings you to see me?"`
+    );
+
+    // Prioritize clean chatName if valid and different from raw title; otherwise cleanly extract name from title/prompt
+    const name =
+      candidateChatName && candidateChatName !== rawTitle && candidateChatName.length <= 34
+        ? candidateChatName
+        : extractCleanCharacterName(
+            rawTitle,
+            summary.shortDescription,
+            firstMessage,
+            personality
+          );
+
+    const subtitle = rawTitle !== name ? rawTitle : CharacterImportService.sanitizeText(summary.shortDescription || '');
+
     const richFullDesc = CharacterImportService.sanitizeText(
       detail?.descriptionHtml ||
         summary.shortDescription ||
@@ -364,19 +390,10 @@ class CommunityCatalogService {
       summary.shortDescription || richFullDesc.slice(0, 300)
     );
 
-    const personality = CharacterImportService.sanitizeText(
-      detail?.personality || shortDesc || 'Observant, adaptive and expressive companion.'
-    );
-
     const background = CharacterImportService.sanitizeText(
       detail?.descriptionHtml
         ? `${richFullDesc}${detail?.scenario ? `\n\n${CharacterImportService.sanitizeText(detail.scenario)}` : ''}`
         : detail?.scenario || shortDesc || 'Imported from Datacat / JanitorAI Community Catalog.'
-    );
-
-    const firstMessage = CharacterImportService.sanitizeText(
-      detail?.firstMessage ||
-        `*${name} looks over at you, their gaze lingering with quiet interest.* "Hello there. What brings you to see me?"`
     );
 
     const tagStrings = summary.tags.map(t =>
@@ -389,7 +406,7 @@ class CommunityCatalogService {
 
     return {
       name,
-      subtitle: summary.chatName && summary.chatName !== name ? summary.chatName : undefined,
+      subtitle: subtitle || undefined,
       shortDescription: shortDesc,
       personality,
       background,

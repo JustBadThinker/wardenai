@@ -37,7 +37,12 @@ export function cleanCreatorHandle(raw?: string): string {
   return clean.length > 24 ? `${clean.slice(0, 20)}…` : clean;
 }
 
-export function extractCleanCharacterName(rawName?: string, rawSubtitle?: string): string {
+export function extractCleanCharacterName(
+  rawName?: string,
+  rawSubtitle?: string,
+  firstMessage?: string,
+  personality?: string
+): string {
   let raw = (rawName || '').trim();
 
   // If rawName is empty, only then check if rawSubtitle has a name-like string
@@ -67,10 +72,16 @@ export function extractCleanCharacterName(rawName?: string, rawSubtitle?: string
     return nameColonQuote[1].trim();
   }
 
-  // 5. Pattern: Name | Subtitle or Name : Subtitle
-  const beforeColonOrPipe = raw.match(/^([^:|"“—–-]{2,28}?)\s*[:|]\s*.+/);
-  if (beforeColonOrPipe && !beforeColonOrPipe[1].includes('"') && !beforeColonOrPipe[1].includes('“')) {
-    return beforeColonOrPipe[1].trim();
+  // 5. Pattern: Name — Subtitle / Name – Subtitle / Name - Subtitle / Name | Subtitle / Name ~ Subtitle
+  // Example: "Giantess Yuuka Kazami — She Found You Lost in the Sunflowers" -> "Giantess Yuuka Kazami"
+  // Example: "Viktor Antonov - The Cold Commander" -> "Viktor Antonov"
+  // Example: "Sora | Your clingy childhood friend" -> "Sora"
+  const beforeSeparator = raw.match(/^([A-Za-z0-9\s.'’_-]{2,34}?)\s*(?:[—–|~•]|\s+[-–—]\s+|\s*:\s+).+/);
+  if (beforeSeparator && beforeSeparator[1] && !beforeSeparator[1].includes('"') && !beforeSeparator[1].includes('“')) {
+    const candidate = beforeSeparator[1].trim();
+    if (candidate.length >= 2 && candidate.length <= 32) {
+      return candidate;
+    }
   }
 
   // 6. Pattern: Quote - Name
@@ -83,6 +94,18 @@ export function extractCleanCharacterName(rawName?: string, rawSubtitle?: string
   const dashEnd = raw.match(/^.+?\s*[-—–]\s*([A-Za-z0-9\s.'’_-]{2,28})$/);
   if (dashEnd && dashEnd[1] && !dashEnd[1].includes('"') && !dashEnd[1].includes('“')) {
     return dashEnd[1].trim();
+  }
+
+  // 8. If title is a scenario phrase / sentence (e.g. "he want to win bet", "roommate catches you")
+  // Infer character's authentic name from personality or firstMessage
+  if (/^[a-z0-9\s,.'!?-]+$/.test(raw) || /^(?:he|she|i|my|they|you|we)\s+/i.test(raw) || raw.split(/\s+/).length >= 4) {
+    const combined = `${personality || ''}\n${firstMessage || ''}`;
+    const nameMatch =
+      combined.match(/(?:You are|Character:|Name:|\{\{char\}\} is)\s+([A-Z][a-zA-Z0-9'’_-]+(?:\s+[A-Z][a-zA-Z0-9'’_-]+)?)/i) ||
+      combined.match(/\b([A-Z][a-z]{2,15}(?:\s+[A-Z][a-z]{2,15})?)\s+(?:has stopped|smiles|looks at you|glares|observes|stands|walks|steps|sighs|chuckles)\b/);
+    if (nameMatch && nameMatch[1]) {
+      return nameMatch[1].trim();
+    }
   }
 
   return raw;
@@ -260,7 +283,12 @@ class AIProviderService {
   }
 
   public getChatCharacterName(character: Character): string {
-    return extractCleanCharacterName(character.name, character.subtitle);
+    return extractCleanCharacterName(
+      character.name,
+      character.subtitle,
+      character.firstMessage,
+      character.personality
+    );
   }
 
   private buildSystemPrompt(

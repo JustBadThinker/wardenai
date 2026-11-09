@@ -331,8 +331,13 @@ export const ChatView: React.FC<ChatViewProps> = ({
   };
   const currentScenario = character.scenarios.find(s => s.id === activeScenarioId) || character.scenarios[0];
 
-  // Extract pure character name for chat (so long card titles like 'Angelica: "Greetings..."' show as 'Angelica')
-  const chatCharName = extractCleanCharacterName(character.name, character.subtitle);
+  // Extract pure character name for chat (so card titles like 'Giantess Yuuka Kazami — She Found...' show as 'Giantess Yuuka Kazami', and 'he want to win bet' shows as 'Eli')
+  const chatCharName = extractCleanCharacterName(
+    character.name,
+    character.subtitle,
+    character.firstMessage,
+    character.personality
+  );
 
   const currentOptimizerLevel: TokenOptimizerLevel =
     conversation.tokenOptimizer || storageService.getTokenOptimizerLevel();

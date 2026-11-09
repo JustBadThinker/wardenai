@@ -308,7 +308,12 @@ export default function App() {
       '';
 
     const userPersonaName = personaToUse?.name || currentUser.displayName || 'User';
-    const chatCharName = extractCleanCharacterName(char.name, char.subtitle);
+    const chatCharName = extractCleanCharacterName(
+      char.name,
+      char.subtitle,
+      char.firstMessage,
+      char.personality
+    );
     const initialText = rawInitialText
       .replace(/`?\{\{user\}\}`?|`?\[\[user\]\]`?|<user>/gi, userPersonaName)
       .replace(/`?\{\{char\}\}`?|`?\[\[char\]\]`?|<char>/gi, chatCharName);
