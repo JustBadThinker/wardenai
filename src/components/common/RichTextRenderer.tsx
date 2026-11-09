@@ -6,6 +6,8 @@
 import React, { useState } from 'react';
 import { ExternalLink, Image as ImageIcon, X, ZoomIn } from 'lucide-react';
 import { CharacterImportService } from '../../services/characterImportService';
+import { CatPulsingLoader } from './CatPulsingLoader';
+import { ImageLightboxModal } from './ImageLightboxModal';
 
 interface RichTextRendererProps {
   content: string;
@@ -70,8 +72,8 @@ const SafeImage: React.FC<{
         className="group relative inline-block max-w-full overflow-hidden rounded-xl border border-purple-500/25 bg-[#0c0e14]/80 shadow-lg cursor-pointer transition-all duration-300 hover:border-purple-500/60 hover:shadow-purple-900/20"
       >
         {!isLoaded && (
-          <div className="w-64 h-36 flex items-center justify-center bg-[#141722] animate-pulse text-neutral-500 text-xs rounded-xl">
-            Loading artwork...
+          <div className="w-64 h-36 flex items-center justify-center bg-[#141722] rounded-xl p-4">
+            <CatPulsingLoader size="sm" label="Loading artwork..." glow={false} />
           </div>
         )}
         <img
@@ -121,32 +123,13 @@ export const RichTextRenderer: React.FC<RichTextRendererProps> = ({
       </div>
 
       {/* Lightbox Modal for Description / Greeting Images */}
-      {zoomedImage && (
-        <div
-          onClick={() => setZoomedImage(null)}
-          className="fixed inset-0 z-[80] bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in cursor-zoom-out"
-        >
-          <div
-            onClick={e => e.stopPropagation()}
-            className="relative max-w-4xl max-h-[90vh] flex flex-col items-center animate-modal-pop"
-          >
-            <button
-              onClick={() => setZoomedImage(null)}
-              className="absolute -top-3 -right-3 z-10 w-8 h-8 rounded-full bg-neutral-900 border border-white/20 text-white flex items-center justify-center hover:bg-neutral-800 cursor-pointer shadow-lg"
-            >
-              <X className="w-4 h-4" />
-            </button>
-            <img
-              src={zoomedImage.src}
-              alt={zoomedImage.alt || 'Preview'}
-              className="max-w-full max-h-[82vh] object-contain rounded-2xl border border-white/15 shadow-2xl"
-            />
-            {zoomedImage.alt && (
-              <p className="mt-2 text-xs text-neutral-300 italic">{zoomedImage.alt}</p>
-            )}
-          </div>
-        </div>
-      )}
+      <ImageLightboxModal
+        isOpen={Boolean(zoomedImage)}
+        onClose={() => setZoomedImage(null)}
+        imageUrl={zoomedImage?.src || ''}
+        alt={zoomedImage?.alt}
+        title={zoomedImage?.alt || 'Artwork Preview'}
+      />
     </>
   );
 };

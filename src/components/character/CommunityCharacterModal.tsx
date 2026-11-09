@@ -4,6 +4,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   X,
@@ -28,6 +29,7 @@ import {
 import { RichTextRenderer } from '../common/RichTextRenderer';
 import { cleanCreatorHandle } from '../../services/aiProviderService';
 import { CatPulsingLoader } from '../common/CatPulsingLoader';
+import { ImageLightboxModal } from '../common/ImageLightboxModal';
 
 interface CommunityCharacterModalProps {
   character: CommunityCharacter | null;
@@ -61,6 +63,7 @@ export const CommunityCharacterModal: React.FC<CommunityCharacterModalProps> = (
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'firstMessage' | 'scenarios'>('overview');
   const [revealed, setRevealed] = useState(false);
+  const [isLightboxOpen, setIsLightboxOpen] = useState(false);
 
   useEffect(() => {
     if (!character || !isOpen) {
@@ -68,6 +71,7 @@ export const CommunityCharacterModal: React.FC<CommunityCharacterModalProps> = (
       setError(null);
       setActiveTab('overview');
       setRevealed(false);
+      setIsLightboxOpen(false);
       return;
     }
 
@@ -97,6 +101,7 @@ export const CommunityCharacterModal: React.FC<CommunityCharacterModalProps> = (
   }, [character?.id, isOpen]);
 
   if (!isOpen || !character) return null;
+  if (typeof document === 'undefined') return null;
 
   const shouldBlur = character.isNsfw && blurNsfw && !revealed;
 
@@ -108,50 +113,86 @@ export const CommunityCharacterModal: React.FC<CommunityCharacterModalProps> = (
     return num.toString();
   };
 
-  return (
-    <AnimatePresence>
-      {isOpen && character && (
-        <div
-          className="fixed inset-0 z-[70] flex items-center justify-center p-2.5 sm:p-6"
-          onClick={onClose}
-        >
-          {/* Backdrop */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="fixed inset-0 bg-black/80 backdrop-blur-md"
-          />
-
-          {/* Modal Container */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.94, y: 16 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.94, y: 16 }}
-            transition={{ type: 'spring', damping: 30, stiffness: 380, mass: 0.8 }}
-            className="relative w-full max-w-3xl max-h-[92dvh] bg-[#10131c] border border-[#1f2433] rounded-2xl shadow-2xl overflow-hidden flex flex-col transform-gpu z-10"
-            onClick={e => e.stopPropagation()}
-          >
-        {/* Header Artwork & Info Hero (Compact on mobile so buttons and text are immediately visible) */}
-        <div className="relative h-36 sm:h-60 w-full bg-[#0c0e14] shrink-0 overflow-hidden">
-          <img
-            src={detail?.avatarUrl || character.avatarUrl}
-            alt={character.name}
-            referrerPolicy="no-referrer"
-            className={`w-full h-full object-cover object-top ${
-              shouldBlur ? 'blur-2xl scale-110' : ''
-            }`}
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-[#10131c] via-[#10131c]/60 to-black/40" />
-
-          {/* Close button */}
-          <button
+  return createPortal(
+    <>
+      <AnimatePresence>
+        {isOpen && character && (
+          <div
+            className="fixed inset-0 z-[70] flex items-center justify-center p-2.5 sm:p-6"
             onClick={onClose}
-            className="absolute top-3.5 right-3.5 z-20 w-9 h-9 rounded-full bg-black/60 hover:bg-black/80 backdrop-blur-md border border-white/10 flex items-center justify-center text-neutral-300 hover:text-white transition-all cursor-pointer"
           >
-            <X className="w-5 h-5" />
-          </button>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 bg-black/80 backdrop-blur-md"
+            />
+
+            {/* Modal Container */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.94, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.94, y: 16 }}
+              transition={{ type: 'spring', damping: 30, stiffness: 380, mass: 0.8 }}
+              className="relative w-full max-w-3xl max-h-[92dvh] bg-[#10131c] border border-[#1f2433] rounded-2xl shadow-2xl overflow-hidden flex flex-col transform-gpu z-10"
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Header Artwork & Info Hero (Compact on mobile so buttons and text are immediately visible) */}
+              <div
+                onClick={() => !shouldBlur && setIsLightboxOpen(true)}
+                className={`relative h-36 sm:h-60 w-full bg-[#0c0e14] shrink-0 overflow-hidden ${
+                  !shouldBlur ? 'cursor-pointer group' : ''
+                }`}
+                title={!shouldBlur ? 'Click to view & download HD artwork' : undefined}
+              >
+                <img
+                  src={detail?.avatarUrl || character.avatarUrl}
+                  alt={character.name}
+                  referrerPolicy="no-referrer"
+                  className={`w-full h-full object-cover object-top transition-transform duration-500 ${
+                    !shouldBlur ? 'group-hover:scale-105' : ''
+                  } ${shouldBlur ? 'blur-2xl scale-110' : ''}`}
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-[#10131c] via-[#10131c]/60 to-black/40" />
+
+                {/* Top Actions: Quick Send Message / Chat, Download HD Artwork, and Close Button */}
+                <div
+                  className="absolute top-3.5 right-3.5 z-20 flex items-center gap-1.5 sm:gap-2"
+                  onClick={e => e.stopPropagation()}
+                >
+                  {/* Quick Send Message / Roleplay button on top */}
+                  <button
+                    type="button"
+                    onClick={() => onStartChat(character, detail || undefined)}
+                    className="px-3 py-1.5 sm:px-3.5 sm:py-1.5 rounded-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-purple-600/40 backdrop-blur-md border border-white/20 active:scale-95 transition-all cursor-pointer"
+                    title="Start roleplay immediately without scrolling"
+                  >
+                    <Play className="w-3.5 h-3.5 fill-current" />
+                    <span>Chat</span>
+                  </button>
+
+                  {/* Quick Download HD Image button */}
+                  <button
+                    type="button"
+                    onClick={() => setIsLightboxOpen(true)}
+                    className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-black/60 hover:bg-black/80 backdrop-blur-md border border-white/10 flex items-center justify-center text-neutral-300 hover:text-white transition-all cursor-pointer active:scale-95"
+                    title="View & Download HD Artwork"
+                  >
+                    <Download className="w-4 h-4 text-purple-300" />
+                  </button>
+
+                  {/* Close button */}
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-black/60 hover:bg-black/80 backdrop-blur-md border border-white/10 flex items-center justify-center text-neutral-300 hover:text-white transition-all cursor-pointer active:scale-95"
+                    title="Close modal"
+                  >
+                    <X className="w-4 h-4 sm:w-5 sm:h-5" />
+                  </button>
+                </div>
 
           {/* Sensitive content reveal */}
           {shouldBlur && (
@@ -430,6 +471,16 @@ export const CommunityCharacterModal: React.FC<CommunityCharacterModalProps> = (
       </div>
     )}
   </AnimatePresence>
-  );
+
+  {/* Lightbox Modal for HD character preview & download */}
+  <ImageLightboxModal
+    isOpen={isLightboxOpen}
+    onClose={() => setIsLightboxOpen(false)}
+    imageUrl={detail?.avatarUrl || character?.avatarUrl || ''}
+    title={character?.name}
+  />
+</>,
+document.body
+);
 };
 

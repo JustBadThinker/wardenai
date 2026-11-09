@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Send,
   Square,
@@ -66,6 +67,7 @@ import { tokenPriceService, DEFAULT_USD_TO_IDR_RATE } from '../services/tokenPri
 import { TokenCounterModal } from '../components/common/TokenCounterModal';
 import { RichTextRenderer } from '../components/common/RichTextRenderer';
 import { CatPulsingLoader } from '../components/common/CatPulsingLoader';
+import { ImageLightboxModal } from '../components/common/ImageLightboxModal';
 import {
   exportTranscriptMarkdown,
   exportTranscriptPlainText,
@@ -3517,42 +3519,16 @@ export const ChatView: React.FC<ChatViewProps> = ({
         </div>
       )}
 
-      {/* 4. Fullscreen Centered Image Lightbox Modal */}
-      {lightboxImage && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in"
-          onClick={() => setLightboxImage(null)}
-        >
-          <div
-            className="relative max-w-2xl max-h-[90vh] flex flex-col items-center animate-modal-pop"
-            onClick={e => e.stopPropagation()}
-          >
-            <button
-              onClick={() => setLightboxImage(null)}
-              className="absolute -top-10 right-0 sm:-right-10 p-2 rounded-full bg-neutral-900/80 hover:bg-neutral-800 text-white transition-colors cursor-pointer"
-              title="Close image"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <img
-              src={lightboxImage.url}
-              alt={lightboxImage.title}
-              referrerPolicy="no-referrer"
-              className="max-w-full max-h-[80vh] object-contain rounded-2xl border border-white/10 shadow-2xl"
-            />
-
-            {lightboxImage.title && (
-              <p className="mt-3 text-xs sm:text-sm font-semibold text-neutral-300 bg-black/60 px-3 py-1 rounded-full border border-white/10 text-center truncate max-w-md">
-                {lightboxImage.title}
-              </p>
-            )}
-          </div>
-        </div>
-      )}
+      {/* 4. Fullscreen Centered Image Lightbox Modal with HD support, Cat Pulsing loader & Download */}
+      <ImageLightboxModal
+        isOpen={Boolean(lightboxImage)}
+        onClose={() => setLightboxImage(null)}
+        imageUrl={lightboxImage?.url || ''}
+        title={lightboxImage?.title}
+      />
 
       {/* 5. Janitor AI style Character / Persona Info Modal */}
-      {characterInfoModal.isOpen && (
+      {characterInfoModal.isOpen && typeof document !== 'undefined' && createPortal(
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/85 backdrop-blur-md animate-fade-in"
           onClick={() => setCharacterInfoModal({ isOpen: false })}
@@ -3721,7 +3697,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
               </div>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Token Counter & Pricing Modal */}
