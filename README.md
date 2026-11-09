@@ -174,6 +174,18 @@ Contributions, bug reports, and suggestions are welcome.
 
 ---
 
+## Open Source Acknowledgements & Credits
+
+Warden AI is built with deep appreciation for the open-source roleplay and AI development community. Specific features and formats in this app are inspired by and compatible with open-source specifications:
+
+- **[SillyTavern](https://github.com/SillyTavern/SillyTavern)**:
+  - We implemented our character card import/export engine from scratch based on the open-source **Character Card V2 (CCv2)** specification and PNG metadata chunk standard popularized by SillyTavern.
+  - Compatible with `.png` character cards (tEXt `chara` chunks) and lorebook structures, allowing users to seamlessly import and export their cards between Warden AI and SillyTavern.
+- **[Chub.ai](https://chub.ai) & [Janitor AI](https://janitorai.com)**:
+  - Community character card schema compatibility and markdown formatting conventions.
+
+---
+
 ## License
 
 This project is licensed under the [MIT License](LICENSE).

@@ -2478,9 +2478,21 @@ export const ChatView: React.FC<ChatViewProps> = ({
           <div className="absolute inset-0" onClick={() => setRightPanel('hidden')} />
 
           {/* Drawer content */}
-          <div className="relative w-full max-w-sm sm:w-96 bg-[#0c0e14] border-l border-[#1a1d27] h-full flex flex-col shadow-2xl z-10 animate-drawer-right overflow-hidden">
-            {/* Drawer Header with 3 Tabs */}
-            <div className="h-[52px] border-b border-[#1a1d27] px-3 sm:px-4 flex items-center justify-between shrink-0 bg-[#0c0e14]">
+          <div
+            className="relative w-full max-w-sm sm:w-96 bg-[#0c0e14] border-l border-[#1a1d27] h-full flex flex-col shadow-2xl z-10 animate-drawer-right overflow-hidden"
+            style={{
+              paddingBottom: 'env(safe-area-inset-bottom, 0px)'
+            }}
+          >
+            {/* Drawer Header with 3 Tabs (Safe-area padded for camera punch-holes and status bar notches) */}
+            <div
+              className="border-b border-[#1a1d27] px-3 sm:px-4 flex items-center justify-between shrink-0 bg-[#0c0e14]"
+              style={{
+                paddingTop: 'max(14px, env(safe-area-inset-top, 14px))',
+                minHeight: 'calc(52px + max(14px, env(safe-area-inset-top, 14px)))',
+                paddingBottom: '8px'
+              }}
+            >
               <div className="flex items-center gap-1.5 py-1">
                 <button
                   onClick={() => setRightPanel('options')}

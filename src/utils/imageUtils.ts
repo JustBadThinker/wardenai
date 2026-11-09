@@ -69,3 +69,4 @@ export function getFallbackImageUrl(currentUrl: string): string | null {
 
   return null;
 }
+
