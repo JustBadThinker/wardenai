@@ -134,8 +134,13 @@ export class WardenVaultService {
     const envelopeString = JSON.stringify(envelope, null, 2);
     const blob = new Blob([envelopeString], { type: 'application/x-warden-vault' });
 
-    const dateStr = new Date().toISOString().split('T')[0];
-    const filename = `warden_vault_backup_${dateStr}.warden`;
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const filename = `warden-${year}-${month}-${day}-${hours}${minutes}.warden`;
 
     return { blob, filename, stats, rawContent: envelopeString };
   }
@@ -420,8 +425,27 @@ export class WardenVaultService {
     blob: Blob,
     filename: string,
     rawContent?: string
-  ): Promise<{ method: 'share' | 'download' | 'clipboard' }> {
-    // 1. Android & Mobile Web Share API:
+  ): Promise<{ method: 'native' | 'share' | 'download' | 'clipboard'; path?: string }> {
+    // 1. Android APK Native Bridge: Direct save into Download/Warden/ without user prompts
+    if (typeof window !== 'undefined' && (window as any).WardenNativeBridge?.saveFileToDownloads) {
+      try {
+        const text = rawContent || (await blob.text());
+        const resStr = (window as any).WardenNativeBridge.saveFileToDownloads(
+          filename,
+          text,
+          false,
+          'Warden'
+        );
+        const res = typeof resStr === 'string' ? JSON.parse(resStr) : resStr;
+        if (res?.success) {
+          return { method: 'native', path: res.path };
+        }
+      } catch (err) {
+        console.warn('[WardenVaultService] Native bridge save failed, trying share fallback:', err);
+      }
+    }
+
+    // 2. Android & Mobile Web Share API:
     // Android WebViews do NOT support downloading blob: URLs via <a> tags.
     // navigator.share with File invokes Android's native system share sheet ("Save to Downloads", "Google Drive", etc.)
     if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {

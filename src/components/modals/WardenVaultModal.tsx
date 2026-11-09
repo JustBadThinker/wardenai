@@ -57,6 +57,7 @@ export const WardenVaultModal: React.FC<WardenVaultModalProps> = ({
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [exportSuccess, setExportSuccess] = useState<VaultExportStats | null>(null);
+  const [savedPath, setSavedPath] = useState<string | null>(null);
   const [exportedRaw, setExportedRaw] = useState<string | null>(null);
   const [exportedBlob, setExportedBlob] = useState<{ blob: Blob; filename: string } | null>(null);
   const [hasCopiedBackup, setHasCopiedBackup] = useState(false);
@@ -78,6 +79,7 @@ export const WardenVaultModal: React.FC<WardenVaultModalProps> = ({
       setMode(initialMode);
       setExportPassword('');
       setExportSuccess(null);
+      setSavedPath(null);
       setExportedRaw(null);
       setExportedBlob(null);
       setHasCopiedBackup(false);
@@ -107,6 +109,7 @@ export const WardenVaultModal: React.FC<WardenVaultModalProps> = ({
   const handleExport = async () => {
     setIsExporting(true);
     setExportSuccess(null);
+    setSavedPath(null);
     setExportError(null);
     try {
       const { blob, filename, stats, rawContent } = await wardenVaultService.exportVault(
@@ -115,7 +118,10 @@ export const WardenVaultModal: React.FC<WardenVaultModalProps> = ({
       );
       setExportedRaw(rawContent);
       setExportedBlob({ blob, filename });
-      await wardenVaultService.downloadVaultFile(blob, filename, rawContent);
+      const downloadRes = await wardenVaultService.downloadVaultFile(blob, filename, rawContent);
+      if (downloadRes?.path) {
+        setSavedPath(downloadRes.path);
+      }
       setExportSuccess(stats);
     } catch (err: any) {
       setExportError(err?.message || 'Export failed.');
@@ -386,10 +392,17 @@ export const WardenVaultModal: React.FC<WardenVaultModalProps> = ({
                   <div className="flex items-center gap-2.5">
                     <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
                     <div>
-                      <strong className="block text-white font-bold">Vault Encrypted Successfully!</strong>
-                      <span className="text-[11px] text-emerald-300/80">
+                      <strong className="block text-white font-bold">
+                        {savedPath ? 'Vault Saved to Downloads!' : 'Vault Encrypted Successfully!'}
+                      </strong>
+                      <span className="text-[11px] text-emerald-300/80 block">
                         Exported {exportSuccess.personasCount} personas, {exportSuccess.conversationsCount} chats ({exportSuccess.messagesCount} messages), and {exportSuccess.rulesCount} custom rules.
                       </span>
+                      {savedPath && (
+                        <span className="text-[10px] text-purple-300 font-mono block mt-1.5 bg-[#0a0d14] px-2.5 py-1.5 rounded-lg border border-purple-500/30">
+                          📁 Lokasi File: <strong>{savedPath}</strong>
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -422,7 +435,15 @@ export const WardenVaultModal: React.FC<WardenVaultModalProps> = ({
                   </div>
 
                   <p className="text-[10px] text-neutral-400 leading-normal">
-                    💡 <strong>Android / Mobile note:</strong> Tap <em>Save / Share File Again</em> to choose your download location (Downloads, Files by Google, Drive), or copy the backup text to transfer anywhere.
+                    {savedPath ? (
+                      <>
+                        💡 <strong>Tersimpan Langsung:</strong> File backup otomatis tersimpan di folder <code>{savedPath}</code> pada memori perangkat Anda. Anda dapat membuka atau memindahkannya kapan saja melalui File Manager.
+                      </>
+                    ) : (
+                      <>
+                        💡 <strong>Android / Mobile note:</strong> Tap <em>Save / Share File Again</em> untuk memilih lokasi download (Downloads, Files by Google, Drive), atau copy teks backup untuk transfer cepat.
+                      </>
+                    )}
                   </p>
                 </div>
               )}

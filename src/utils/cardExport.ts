@@ -315,7 +315,26 @@ export function exportTranscriptJson(
 export async function downloadFile(filename: string, content: string | Blob, mimeType: string = 'text/plain') {
   const blob = typeof content === 'string' ? new Blob([content], { type: mimeType }) : content;
 
-  // On Android/mobile WebViews, anchor clicks on blob: URLs fail silently.
+  // 1. Android APK Native Bridge: Direct save into Download/Warden/
+  if (typeof window !== 'undefined' && (window as any).WardenNativeBridge?.saveFileToDownloads) {
+    try {
+      const text = typeof content === 'string' ? content : await blob.text();
+      const resStr = (window as any).WardenNativeBridge.saveFileToDownloads(
+        filename,
+        text,
+        false,
+        'Warden'
+      );
+      const res = typeof resStr === 'string' ? JSON.parse(resStr) : resStr;
+      if (res?.success) {
+        return;
+      }
+    } catch (err) {
+      console.warn('[downloadFile] Native bridge save failed, falling back:', err);
+    }
+  }
+
+  // 2. On Android/mobile WebViews, anchor clicks on blob: URLs fail silently.
   // Using Web Share API lets the user save directly to Downloads or Google Drive via Android's native system sheet.
   if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
     try {
