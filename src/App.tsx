@@ -126,7 +126,7 @@ export default function App() {
   };
 
   const handleTouchStart = (e: React.TouchEvent) => {
-    if (activeView === 'chat' || activeView === 'discover' || isInsideHorizontalScroll(e.target)) {
+    if (activeView === 'chat' || isInsideHorizontalScroll(e.target)) {
       touchStartRef.current = null;
       return;
     }
