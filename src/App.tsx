@@ -24,6 +24,7 @@ import {
 } from './types';
 import { firebaseAuthService, DEMO_ACCOUNTS } from './services/firebaseAuth';
 import { storageService } from './services/storageService';
+import { extractCleanCharacterName } from './services/aiProviderService';
 import { TopHeader } from './components/navigation/TopHeader';
 import { Sidebar } from './components/navigation/Sidebar';
 import { MobileBottomBar } from './components/navigation/MobileBottomBar';
@@ -307,29 +308,7 @@ export default function App() {
       '';
 
     const userPersonaName = personaToUse?.name || currentUser.displayName || 'User';
-    const chatCharName = (() => {
-      const sub = (char.subtitle || '').trim();
-      if (
-        sub &&
-        sub.length <= 34 &&
-        !sub.includes('#') &&
-        !sub.includes('"') &&
-        !sub.includes('\n') &&
-        !/^(?:1\.|scenario|roleplay)/i.test(sub)
-      ) {
-        return sub;
-      }
-      const raw = (char.name || '').trim();
-      const beforeColonOrPipe = raw.match(/^([^:|"—–-]{2,28}?)\s*[:|]\s*.+/);
-      if (beforeColonOrPipe && !beforeColonOrPipe[1].includes('"')) {
-        return beforeColonOrPipe[1].trim();
-      }
-      const afterDash = raw.match(/["”)\]]\s*[-—–]\s*([A-Za-z0-9\s.'’]{2,28})$/);
-      if (afterDash) {
-        return afterDash[1].trim();
-      }
-      return raw;
-    })();
+    const chatCharName = extractCleanCharacterName(char.name, char.subtitle);
     const initialText = rawInitialText
       .replace(/`?\{\{user\}\}`?|`?\[\[user\]\]`?|<user>/gi, userPersonaName)
       .replace(/`?\{\{char\}\}`?|`?\[\[char\]\]`?|<char>/gi, chatCharName);
@@ -374,10 +353,14 @@ export default function App() {
   };
 
   const handleResumeConversation = (conv: Conversation) => {
-    const char = characters.find(c => c.id === conv.characterId);
+    let char = characters.find(c => c.id === conv.characterId);
+    if (!char) {
+      const allStored = storageService.getCharacters();
+      char = allStored.find(c => c.id === conv.characterId);
+    }
     if (char) {
       setSelectedCharacter(char);
-      const sc = char.scenarios.find(s => s.id === conv.scenarioId);
+      const sc = char.scenarios?.find(s => s.id === conv.scenarioId) || char.scenarios?.[0];
       setActiveScenario(sc);
       setActiveConversation(conv);
       if (conv.personaId) {
@@ -737,55 +720,59 @@ export default function App() {
               />
             )}
 
-            {activeView === 'chat' && (selectedCharacter || characters.length > 0) ? (
-              <ChatView
-                conversation={
-                  activeConversation ||
-                  conversations[0] || {
-                    id: 'conv_empty',
-                    characterId: (selectedCharacter || characters[0]).id,
-                    userId: currentUser.id,
-                    messages: [],
-                    createdAt: new Date().toISOString(),
-                    updatedAt: new Date().toISOString(),
-                    messageCount: 0
+            {activeView === 'chat' && (selectedCharacter || characters.length > 0) ? (() => {
+              const activeConv =
+                activeConversation ||
+                conversations[0] || {
+                  id: 'conv_empty',
+                  characterId: (selectedCharacter || characters[0]).id,
+                  userId: currentUser.id,
+                  messages: [],
+                  createdAt: new Date().toISOString(),
+                  updatedAt: new Date().toISOString(),
+                  messageCount: 0
+                };
+              const activeChar =
+                (activeConv?.characterId ? characters.find(c => c.id === activeConv.characterId) : null) ||
+                selectedCharacter ||
+                characters[0];
+
+              return (
+                <ChatView
+                  key={`${activeConv.id}_${activeChar.id}`}
+                  conversation={activeConv}
+                  character={activeChar}
+                  scenario={activeScenario}
+                  persona={
+                    (activeConv?.personaId ? personas.find(p => p.id === activeConv.personaId) : null) ||
+                    activePersona ||
+                    personas.find(p => p.isDefault) ||
+                    personas[0]
                   }
-                }
-                character={
-                  selectedCharacter ||
-                  characters.find(c => c.id === activeConversation?.characterId) ||
-                  characters[0]
-                }
-                scenario={activeScenario}
-                persona={
-                  (activeConversation?.personaId ? personas.find(p => p.id === activeConversation.personaId) : null) ||
-                  activePersona ||
-                  personas.find(p => p.isDefault) ||
-                  personas[0]
-                }
-                allPersonas={personas}
-                allProviders={providers}
-                lorebooks={lorebooks}
-                currentUser={currentUser}
-                onUpdateConversation={updated => {
-                  if (!updated.messages || updated.messages.length === 0) {
-                    handleDeleteConversation(updated.id);
-                    return;
-                  }
-                  storageService.upsertConversation(updated);
-                  setConversations(storageService.getConversations(currentUser.id));
-                  setActiveConversation(updated);
-                }}
-                onBack={() => setActiveView(conversations.length > 0 ? 'chats' : 'discover')}
-                onOpenReportWithMessages={(char, msgs) => handleOpenReportModal(char, msgs)}
-                allCharacters={characters}
-                allConversations={conversations}
-                onSelectConversation={handleResumeConversation}
-                onDeleteConversation={handleDeleteConversation}
-                onStartNewChat={char => handleStartChatWithScenario(char, char.scenarios[0])}
-                globalBackground={globalBackground}
-              />
-            ) : activeView === 'chat' ? (
+                  allPersonas={personas}
+                  allProviders={providers}
+                  lorebooks={lorebooks}
+                  currentUser={currentUser}
+                  onUpdateConversation={updated => {
+                    if (!updated.messages || updated.messages.length === 0) {
+                      handleDeleteConversation(updated.id);
+                      return;
+                    }
+                    storageService.upsertConversation(updated);
+                    setConversations(storageService.getConversations(currentUser.id));
+                    setActiveConversation(updated);
+                  }}
+                  onBack={() => setActiveView(conversations.length > 0 ? 'chats' : 'discover')}
+                  onOpenReportWithMessages={(char, msgs) => handleOpenReportModal(char, msgs)}
+                  allCharacters={characters}
+                  allConversations={conversations}
+                  onSelectConversation={handleResumeConversation}
+                  onDeleteConversation={handleDeleteConversation}
+                  onStartNewChat={char => handleStartChatWithScenario(char, char.scenarios?.[0] || char.scenarios[0])}
+                  globalBackground={globalBackground}
+                />
+              );
+            })() : activeView === 'chat' ? (
               <ChatsListView
                 conversations={conversations}
                 characters={characters}

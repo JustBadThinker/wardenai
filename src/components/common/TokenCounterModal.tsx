@@ -17,7 +17,7 @@ import {
   Check,
   Cpu
 } from 'lucide-react';
-import { TokenPriceConfig, ConversationTokenStats, TokenCurrency } from '../../types';
+import { TokenPriceConfig, ConversationTokenStats, TokenCurrency, CumulativeTokenUsage } from '../../types';
 import {
   tokenPriceService,
   TOKEN_PRICE_PRESETS,
@@ -31,6 +31,7 @@ interface TokenCounterModalProps {
   currentConfig: TokenPriceConfig;
   onConfigChange: (config: TokenPriceConfig) => void;
   optimizerLevel?: string;
+  cumulativeUsage?: CumulativeTokenUsage;
 }
 
 export const TokenCounterModal: React.FC<TokenCounterModalProps> = ({
@@ -39,7 +40,8 @@ export const TokenCounterModal: React.FC<TokenCounterModalProps> = ({
   stats,
   currentConfig,
   onConfigChange,
-  optimizerLevel = 'off'
+  optimizerLevel = 'off',
+  cumulativeUsage
 }) => {
   const [currency, setCurrency] = useState<TokenCurrency>(currentConfig.currency || 'USD');
   const [usdToIdrRateInput, setUsdToIdrRateInput] = useState<string>(
@@ -336,7 +338,53 @@ export const TokenCounterModal: React.FC<TokenCounterModalProps> = ({
             </div>
           </div>
 
-          {/* 3. Pricing Calculator & 1M Rates Settings */}
+          {/* 3. Cumulative Conversation Statistics (All turns so far) */}
+          <div className="p-4 rounded-2xl bg-[#141828] border border-purple-500/30 space-y-3">
+            <div className="flex items-center justify-between text-xs sm:text-sm">
+              <div className="flex items-center gap-1.5 font-bold text-white">
+                <Coins className="w-4 h-4 text-amber-400" />
+                <span>Cumulative Conversation Statistics</span>
+              </div>
+              <span className="text-[11px] text-purple-300 font-mono">
+                {cumulativeUsage?.turnCount || 0} completed {cumulativeUsage?.turnCount === 1 ? 'turn' : 'turns'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+              <div className="p-2.5 rounded-xl bg-[#0d101b] border border-[#1d2336]">
+                <div className="text-[10px] text-neutral-400">Total Input Tokens</div>
+                <div className="font-bold text-white font-mono text-xs sm:text-sm mt-0.5">
+                  {tokenPriceService.formatTokenCount(cumulativeUsage?.totalInputTokens || 0)}
+                </div>
+              </div>
+              <div className="p-2.5 rounded-xl bg-[#0d101b] border border-[#1d2336]">
+                <div className="text-[10px] text-neutral-400">Total Output Tokens</div>
+                <div className="font-bold text-white font-mono text-xs sm:text-sm mt-0.5">
+                  {tokenPriceService.formatTokenCount(cumulativeUsage?.totalOutputTokens || 0)}
+                </div>
+              </div>
+              <div className="p-2.5 rounded-xl bg-[#0d101b] border border-[#1d2336]">
+                <div className="text-[10px] text-neutral-400">Total Conversation Spend</div>
+                <div className="font-bold text-amber-300 font-mono text-xs sm:text-sm mt-0.5">
+                  {currency === 'IDR'
+                    ? tokenPriceService.formatRupiah(cumulativeUsage?.totalCostIdr || 0)
+                    : tokenPriceService.formatCost(cumulativeUsage?.totalCostUsd || 0, 'USD')}
+                </div>
+              </div>
+              <div className="p-2.5 rounded-xl bg-[#0d101b] border border-[#1d2336]">
+                <div className="text-[10px] text-neutral-400">Average Cost / Turn</div>
+                <div className="font-bold text-purple-200 font-mono text-xs sm:text-sm mt-0.5">
+                  {cumulativeUsage && cumulativeUsage.turnCount > 0
+                    ? currency === 'IDR'
+                      ? tokenPriceService.formatRupiah(cumulativeUsage.totalCostIdr / cumulativeUsage.turnCount)
+                      : tokenPriceService.formatCost(cumulativeUsage.totalCostUsd / cumulativeUsage.turnCount, 'USD')
+                    : '—'}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 4. Pricing Calculator & 1M Rates Settings */}
           <div className="p-4 rounded-2xl bg-[#121624] border border-[#20273c] space-y-3.5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5 font-bold text-xs sm:text-sm text-white">

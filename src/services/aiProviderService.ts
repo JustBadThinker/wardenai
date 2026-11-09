@@ -38,20 +38,16 @@ export function cleanCreatorHandle(raw?: string): string {
 }
 
 export function extractCleanCharacterName(rawName?: string, rawSubtitle?: string): string {
-  const sub = (rawSubtitle || '').trim();
-  if (
-    sub &&
-    sub.length <= 34 &&
-    !sub.includes('#') &&
-    !sub.includes('"') &&
-    !sub.includes('“') &&
-    !sub.includes('\n') &&
-    !/^(?:1\.|scenario|roleplay|episode|chapter)/i.test(sub)
-  ) {
-    return sub;
-  }
   let raw = (rawName || '').trim();
-  if (!raw) return 'Character';
+
+  // If rawName is empty, only then check if rawSubtitle has a name-like string
+  if (!raw) {
+    const sub = (rawSubtitle || '').trim();
+    if (sub && sub.length <= 34 && !sub.includes('#') && !sub.includes('\n')) {
+      return sub;
+    }
+    return 'Character';
+  }
 
   // 1. Strip leading markdown headers like # or ##
   raw = raw.replace(/^#+\s*/, '');
@@ -77,7 +73,7 @@ export function extractCleanCharacterName(rawName?: string, rawSubtitle?: string
     return beforeColonOrPipe[1].trim();
   }
 
-  // 6. Pattern: Quote - Name or Title - Name
+  // 6. Pattern: Quote - Name
   const afterDash = raw.match(/["”)\]]\s*[-—–]\s*([A-Za-z0-9\s.'’_-]{2,30})$/);
   if (afterDash && afterDash[1]) {
     return afterDash[1].trim();
@@ -368,7 +364,10 @@ class AIProviderService {
     signal: AbortSignal,
     callbacks: StreamCallbacks
   ): Promise<void> {
-    const lastUserMsg = conversation.messages[conversation.messages.length - 1]?.content || 'Hello';
+    const realUserMsgs = conversation.messages.filter(
+      m => (m.sender === 'user' || m.senderRole === 'user') && m.id !== 'msg_continue_prompt'
+    );
+    const lastUserMsg = realUserMsgs[realUserMsgs.length - 1]?.content || 'Hello';
     const userRole = persona ? persona.name.split(' ')[0] : 'Traveler';
 
     // Tailored in-character simulated dialogues based on character archetype

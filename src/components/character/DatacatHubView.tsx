@@ -64,7 +64,7 @@ export const DatacatHubView: React.FC<DatacatHubViewProps> = ({
   const [visibleFeedChars, setVisibleFeedChars] = useState<CommunityCharacter[]>([]);
   const [selectedAutoChar, setSelectedAutoChar] = useState<CommunityCharacter | null>(null);
 
-  // Load the live Datacat feed characters so we can auto-fill the link of the character the user sees on screen
+  // Load the live Datacat feed characters so user can browse or tap to select
   useEffect(() => {
     let active = true;
     communityCatalogService
@@ -72,15 +72,20 @@ export const DatacatHubView: React.FC<DatacatHubViewProps> = ({
       .then(res => {
         if (active && res.characters.length > 0) {
           setVisibleFeedChars(res.characters);
-          setSelectedAutoChar(res.characters[0]);
-          setQuickQuery(`https://datacat.run/characters/${res.characters[0].id}`);
+          if (lastPreviewedCharId) {
+            const match = res.characters.find(c => String(c.id) === lastPreviewedCharId);
+            if (match) {
+              setSelectedAutoChar(match);
+              setQuickQuery(`https://datacat.run/characters/${match.id}`);
+            }
+          }
         }
       })
       .catch(() => {});
     return () => {
       active = false;
     };
-  }, [reloadTrigger]);
+  }, [reloadTrigger, lastPreviewedCharId]);
 
   const bridgeRef = useRef<{
     nonce: string;

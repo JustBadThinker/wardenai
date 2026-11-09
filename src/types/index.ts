@@ -192,8 +192,17 @@ export interface Conversation {
   memoryCheckpoint?: number; // message index up to which memory was summarized
   customPrompt?: string; // Custom prompt rule / guidance for this bot conversation
   tokenOptimizer?: TokenOptimizerLevel; // Off, Easy (~20%), Medium (~45%), Aggressive (~70%)
+  cumulativeUsage?: CumulativeTokenUsage; // Cumulative session token count & estimated spend
   createdAt: string;
   updatedAt: string;
+}
+
+export interface CumulativeTokenUsage {
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalCostUsd: number;
+  totalCostIdr: number;
+  turnCount: number;
 }
 
 export type TokenOptimizerLevel = 'off' | 'easy' | 'medium' | 'aggressive';

@@ -52,13 +52,14 @@ import {
   GlobalChatBackground,
   TokenOptimizerLevel,
   TokenPriceConfig,
-  ConversationTokenStats
+  ConversationTokenStats,
+  CumulativeTokenUsage
 } from '../types';
 import { aiProviderService, extractCleanCharacterName } from '../services/aiProviderService';
 import { storageService, BotRulePreset } from '../services/storageService';
 import { TokenOptimizerSlider } from '../components/common/TokenOptimizerSlider';
 import { tokenOptimizerService } from '../services/tokenOptimizerService';
-import { tokenPriceService } from '../services/tokenPriceService';
+import { tokenPriceService, DEFAULT_USD_TO_IDR_RATE } from '../services/tokenPriceService';
 import { TokenCounterModal } from '../components/common/TokenCounterModal';
 
 interface ChatViewProps {
@@ -359,6 +360,40 @@ export const ChatView: React.FC<ChatViewProps> = ({
     tokenPriceConfig
   ]);
 
+  const calcCumulativeUpdate = (
+    currentConv: Conversation,
+    turnInTokens: number,
+    turnOutTokens: number
+  ): CumulativeTokenUsage => {
+    const prevUsage = currentConv.cumulativeUsage || {
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      totalCostUsd: 0,
+      totalCostIdr: 0,
+      turnCount: 0
+    };
+
+    const rateInUsd = tokenPriceConfig.pricePer1MInput;
+    const rateOutUsd = tokenPriceConfig.pricePer1MOutput;
+    const turnUsd = (turnInTokens / 1_000_000) * rateInUsd + (turnOutTokens / 1_000_000) * rateOutUsd;
+
+    const rateInIdr =
+      tokenPriceConfig.pricePer1MInputIdr ??
+      rateInUsd * (tokenPriceConfig.usdToIdrRate || DEFAULT_USD_TO_IDR_RATE);
+    const rateOutIdr =
+      tokenPriceConfig.pricePer1MOutputIdr ??
+      rateOutUsd * (tokenPriceConfig.usdToIdrRate || DEFAULT_USD_TO_IDR_RATE);
+    const turnIdr = (turnInTokens / 1_000_000) * rateInIdr + (turnOutTokens / 1_000_000) * rateOutIdr;
+
+    return {
+      totalInputTokens: prevUsage.totalInputTokens + turnInTokens,
+      totalOutputTokens: prevUsage.totalOutputTokens + turnOutTokens,
+      totalCostUsd: prevUsage.totalCostUsd + turnUsd,
+      totalCostIdr: prevUsage.totalCostIdr + turnIdr,
+      turnCount: prevUsage.turnCount + 1
+    };
+  };
+
   // Bot Rule & Custom Prompt Presets
   const [rulePresets, setRulePresets] = useState<BotRulePreset[]>(() => storageService.getBotRulePresets());
   const [selectedPresetId, setSelectedPresetId] = useState<string>('');
@@ -482,6 +517,12 @@ export const ChatView: React.FC<ChatViewProps> = ({
     if (conversation.lastSummaryAt) setLastSummaryDate(conversation.lastSummaryAt);
     if (conversation.customPrompt !== undefined) setCustomPrompt(conversation.customPrompt);
     if (conversation.memoryCheckpoint !== undefined) setMemoryCheckpoint(conversation.memoryCheckpoint);
+    setActiveScenarioId(scenario?.id || character.scenarios?.[0]?.id || '');
+    if (conversation.personaId) {
+      setActivePersonaId(conversation.personaId);
+    } else if (persona?.id) {
+      setActivePersonaId(persona.id);
+    }
   }, [conversation.id, character.id, scenario?.id]);
 
   const handleCopyMessage = (id: string, text: string) => {
@@ -647,11 +688,16 @@ export const ChatView: React.FC<ChatViewProps> = ({
       setStreamingChunk('');
       setDisplayedText('');
 
+      const turnInTokens = liveTokenStats.inputTokens;
+      const turnOutTokens = Math.max(1, Math.round(targetText.length / 4));
+      const newCumulative = calcCumulativeUpdate(conversation, turnInTokens, turnOutTokens);
+
       const updatedConv: Conversation = {
         ...conversation,
         messages: finalMessages,
         messageCount: finalMessages.length,
         customPrompt,
+        cumulativeUsage: newCumulative,
         updatedAt: new Date().toISOString()
       };
       onUpdateConversation(updatedConv);
@@ -778,11 +824,17 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
       const finalMessages = [...trimmed, assistantMsg];
       setMessages(finalMessages);
+
+      const turnInTokens = liveTokenStats.inputTokens;
+      const turnOutTokens = Math.max(1, Math.round(targetText.length / 4));
+      const newCumulative = calcCumulativeUpdate(conversation, turnInTokens, turnOutTokens);
+
       const updatedConv: Conversation = {
         ...conversation,
         messages: finalMessages,
         messageCount: finalMessages.length,
         customPrompt,
+        cumulativeUsage: newCumulative,
         updatedAt: new Date().toISOString()
       };
       onUpdateConversation(updatedConv);
@@ -903,11 +955,17 @@ export const ChatView: React.FC<ChatViewProps> = ({
         }
 
         setMessages(finalMessages);
+
+        const turnInTokens = liveTokenStats.inputTokens;
+        const turnOutTokens = Math.max(1, Math.round(targetText.length / 4));
+        const newCumulative = calcCumulativeUpdate(conversation, turnInTokens, turnOutTokens);
+
         const updatedConv: Conversation = {
           ...conversation,
           messages: finalMessages,
           messageCount: finalMessages.length,
           customPrompt,
+          cumulativeUsage: newCumulative,
           updatedAt: new Date().toISOString()
         };
         onUpdateConversation(updatedConv);
@@ -932,7 +990,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
         inputText,
         character,
         currentPersona,
-        conversation,
+        { ...conversation, messages },
         currentProvider
       );
       if (generatedProse) {
@@ -2390,9 +2448,21 @@ export const ChatView: React.FC<ChatViewProps> = ({
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between pt-1 border-t border-[#1a1f30] text-xs font-mono">
-                    <span className="text-neutral-400 text-[11px]">Est. Cost / Turn:</span>
-                    <span className="text-purple-300 font-bold">{liveTokenStats.formattedTotalCost}</span>
+                  <div className="space-y-1 pt-1 border-t border-[#1a1f30] text-xs font-mono">
+                    <div className="flex items-center justify-between">
+                      <span className="text-neutral-400 text-[11px]">Est. Cost / Turn:</span>
+                      <span className="text-purple-300 font-bold">{liveTokenStats.formattedTotalCost}</span>
+                    </div>
+                    {conversation.cumulativeUsage && conversation.cumulativeUsage.turnCount > 0 && (
+                      <div className="flex items-center justify-between text-[10.5px]">
+                        <span className="text-neutral-400">Total Spent ({conversation.cumulativeUsage.turnCount} turns):</span>
+                        <span className="text-amber-300 font-bold">
+                          {tokenPriceConfig.currency === 'IDR'
+                            ? tokenPriceService.formatRupiah(conversation.cumulativeUsage.totalCostIdr)
+                            : tokenPriceService.formatCost(conversation.cumulativeUsage.totalCostUsd, 'USD')}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -3414,6 +3484,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
         currentConfig={tokenPriceConfig}
         onConfigChange={cfg => setTokenPriceConfig(cfg)}
         optimizerLevel={currentOptimizerLevel}
+        cumulativeUsage={conversation.cumulativeUsage}
       />
     </div>
   );
