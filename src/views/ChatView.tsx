@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { motion, AnimatePresence } from 'motion/react';
 import {
   Send,
   Square,
@@ -2471,63 +2472,100 @@ export const ChatView: React.FC<ChatViewProps> = ({
         </div>
       </div>
 
-      {/* 3. Smooth Slide-out Drawer: Opens via the 3-dots button, DOES NOT squish chat! */}
-      {rightPanel !== 'hidden' && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-xs animate-fade-in">
-          {/* Backdrop click to close */}
-          <div className="absolute inset-0" onClick={() => setRightPanel('hidden')} />
+      {/* 3. Smooth Slide-out Drawer: Opens via the 3-dots button with spring physics */}
+      <AnimatePresence>
+        {rightPanel !== 'hidden' && (
+          <div className="fixed inset-0 z-50 flex justify-end">
+            {/* Backdrop click to close */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="absolute inset-0 bg-black/60 backdrop-blur-xs"
+              onClick={() => setRightPanel('hidden')}
+            />
 
-          {/* Drawer content */}
-          <div
-            className="relative w-full max-w-sm sm:w-96 bg-[#0c0e14] border-l border-[#1a1d27] h-full flex flex-col shadow-2xl z-10 animate-drawer-right overflow-hidden"
-            style={{
-              paddingBottom: 'env(safe-area-inset-bottom, 0px)'
-            }}
-          >
-            {/* Drawer Header with 3 Tabs (Safe-area padded for camera punch-holes and status bar notches) */}
-            <div
-              className="border-b border-[#1a1d27] px-3 sm:px-4 flex items-center justify-between shrink-0 bg-[#0c0e14]"
+            {/* Drawer content */}
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 30, stiffness: 350, mass: 0.8 }}
+              className="relative w-full max-w-sm sm:w-96 bg-[#0c0e14] border-l border-[#1a1d27] h-full flex flex-col shadow-2xl z-10 overflow-hidden transform-gpu"
               style={{
-                paddingTop: 'max(14px, env(safe-area-inset-top, 14px))',
-                minHeight: 'calc(52px + max(14px, env(safe-area-inset-top, 14px)))',
-                paddingBottom: '8px'
+                paddingBottom: 'env(safe-area-inset-bottom, 0px)'
               }}
             >
-              <div className="flex items-center gap-1.5 py-1">
+              {/* Drawer Header with 3 Tabs (Safe-area padded for camera punch-holes and status bar notches) */}
+              <div
+                className="border-b border-[#1a1d27] px-3 sm:px-4 flex items-center justify-between shrink-0 bg-[#0c0e14]"
+                style={{
+                  paddingTop: 'max(14px, env(safe-area-inset-top, 14px))',
+                  minHeight: 'calc(52px + max(14px, env(safe-area-inset-top, 14px)))',
+                  paddingBottom: '8px'
+                }}
+              >
+                <div className="relative flex items-center gap-1.5 py-1 select-none">
+                  <button
+                    type="button"
+                    onClick={() => setRightPanel('options')}
+                    className="relative px-3 py-1.5 text-xs font-bold transition-colors cursor-pointer rounded-lg"
+                  >
+                    {rightPanel === 'options' && (
+                      <motion.span
+                        layoutId="chatRightPanelTabPill"
+                        transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+                        className="absolute inset-0 bg-purple-600 rounded-lg shadow-sm"
+                      />
+                    )}
+                    <span className={`relative z-10 transition-colors ${rightPanel === 'options' ? 'text-white' : 'text-neutral-400 hover:text-white'}`}>
+                      Options
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRightPanel('memory')}
+                    className="relative px-3 py-1.5 text-xs font-bold transition-colors cursor-pointer rounded-lg"
+                  >
+                    {rightPanel === 'memory' && (
+                      <motion.span
+                        layoutId="chatRightPanelTabPill"
+                        transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+                        className="absolute inset-0 bg-purple-600 rounded-lg shadow-sm"
+                      />
+                    )}
+                    <span className={`relative z-10 transition-colors ${rightPanel === 'memory' ? 'text-white' : 'text-neutral-400 hover:text-white'}`}>
+                      Memory
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRightPanel('customize')}
+                    className="relative px-3 py-1.5 text-xs font-bold transition-colors cursor-pointer rounded-lg"
+                  >
+                    {rightPanel === 'customize' && (
+                      <motion.span
+                        layoutId="chatRightPanelTabPill"
+                        transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+                        className="absolute inset-0 bg-purple-600 rounded-lg shadow-sm"
+                      />
+                    )}
+                    <span className={`relative z-10 transition-colors ${rightPanel === 'customize' ? 'text-white' : 'text-neutral-400 hover:text-white'}`}>
+                      Style
+                    </span>
+                  </button>
+                </div>
+
                 <button
-                  onClick={() => setRightPanel('options')}
-                  className={`px-3 py-1.5 text-xs rounded-lg font-bold transition-all shrink-0 cursor-pointer ${
-                    rightPanel === 'options' ? 'bg-purple-600 text-white shadow-sm' : 'text-neutral-400 hover:text-white hover:bg-neutral-800/50'
-                  }`}
+                  type="button"
+                  onClick={() => setRightPanel('hidden')}
+                  className="p-1.5 text-neutral-400 hover:text-white rounded-lg hover:bg-neutral-800 transition-colors cursor-pointer shrink-0 ml-1"
+                  title="Close Drawer"
                 >
-                  Options
-                </button>
-                <button
-                  onClick={() => setRightPanel('memory')}
-                  className={`px-3 py-1.5 text-xs rounded-lg font-bold transition-all shrink-0 cursor-pointer ${
-                    rightPanel === 'memory' ? 'bg-purple-600 text-white shadow-sm' : 'text-neutral-400 hover:text-white hover:bg-neutral-800/50'
-                  }`}
-                >
-                  Memory
-                </button>
-                <button
-                  onClick={() => setRightPanel('customize')}
-                  className={`px-3 py-1.5 text-xs rounded-lg font-bold transition-all shrink-0 cursor-pointer ${
-                    rightPanel === 'customize' ? 'bg-purple-600 text-white shadow-sm' : 'text-neutral-400 hover:text-white hover:bg-neutral-800/50'
-                  }`}
-                >
-                  Style
+                  <X className="w-4 h-4" />
                 </button>
               </div>
-
-              <button
-                onClick={() => setRightPanel('hidden')}
-                className="p-1.5 text-neutral-400 hover:text-white rounded-lg hover:bg-neutral-800 transition-colors cursor-pointer shrink-0 ml-1"
-                title="Close Drawer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
 
             {/* DRAWER BODY: TAB 1 - OPTIONS & AI GATEWAY */}
             {rightPanel === 'options' && (
@@ -3527,9 +3565,10 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 </div>
               </div>
             )}
+            </motion.div>
           </div>
-        </div>
-      )}
+        )}
+      </AnimatePresence>
 
       {/* 4. Fullscreen Centered Image Lightbox Modal with HD support, Cat Pulsing loader & Download */}
       <ImageLightboxModal
@@ -3540,22 +3579,32 @@ export const ChatView: React.FC<ChatViewProps> = ({
       />
 
       {/* 5. Janitor AI style Character / Persona Info Modal */}
-      {characterInfoModal.isOpen && typeof document !== 'undefined' && createPortal(
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/85 backdrop-blur-md animate-fade-in"
-          onClick={() => setCharacterInfoModal({ isOpen: false })}
-        >
-          <div
-            className="relative w-full max-w-lg max-h-[85vh] bg-[#0f121b] border border-[#23293d] rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-modal-pop"
-            onClick={e => e.stopPropagation()}
-          >
-            {/* Header Close Button */}
-            <button
+      <AnimatePresence>
+        {characterInfoModal.isOpen && typeof document !== 'undefined' && createPortal(
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="absolute inset-0 bg-black/85 backdrop-blur-md"
               onClick={() => setCharacterInfoModal({ isOpen: false })}
-              className="absolute top-3.5 right-3.5 z-20 w-8 h-8 rounded-full bg-black/60 hover:bg-black/90 text-white flex items-center justify-center transition-all cursor-pointer backdrop-blur-sm border border-white/10"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.94, y: 12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.94, y: 12 }}
+              transition={{ type: 'spring', damping: 28, stiffness: 350 }}
+              className="relative w-full max-w-lg max-h-[85vh] bg-[#0f121b] border border-[#23293d] rounded-2xl shadow-2xl overflow-hidden flex flex-col z-10 transform-gpu"
+              onClick={e => e.stopPropagation()}
             >
-              <X className="w-4 h-4" />
-            </button>
+              {/* Header Close Button */}
+              <button
+                onClick={() => setCharacterInfoModal({ isOpen: false })}
+                className="absolute top-3.5 right-3.5 z-20 w-8 h-8 rounded-full bg-black/60 hover:bg-black/90 text-white flex items-center justify-center transition-all cursor-pointer backdrop-blur-sm border border-white/10"
+              >
+                <X className="w-4 h-4" />
+              </button>
 
             {/* If Persona Info */}
             {characterInfoModal.isPersona ? (
@@ -3708,10 +3757,11 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 </div>
               </div>
             )}
-          </div>
-        </div>,
-        document.body
-      )}
+            </motion.div>
+          </div>,
+          document.body
+        )}
+      </AnimatePresence>
 
       {/* Token Counter & Pricing Modal */}
       <TokenCounterModal
@@ -3725,13 +3775,24 @@ export const ChatView: React.FC<ChatViewProps> = ({
       />
 
       {/* Export Chat Transcript Modal */}
-      {isExportTranscriptOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in">
-          <div
-            className="absolute inset-0"
-            onClick={() => setIsExportTranscriptOpen(false)}
-          />
-          <div className="relative w-full max-w-lg bg-[#0e111a] border border-[#23283a] rounded-2xl p-5 shadow-2xl z-10 flex flex-col space-y-4 max-h-[90vh] overflow-hidden">
+      <AnimatePresence>
+        {isExportTranscriptOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="absolute inset-0 bg-black/75 backdrop-blur-sm"
+              onClick={() => setIsExportTranscriptOpen(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.94, y: 12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.94, y: 12 }}
+              transition={{ type: 'spring', damping: 28, stiffness: 350 }}
+              className="relative w-full max-w-lg bg-[#0e111a] border border-[#23283a] rounded-2xl p-5 shadow-2xl z-10 flex flex-col space-y-4 max-h-[90vh] overflow-hidden transform-gpu"
+            >
             {/* Modal Header */}
             <div className="flex items-center justify-between pb-3 border-b border-[#1b1f2e]">
               <div className="flex items-center gap-2.5">
@@ -3861,9 +3922,10 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 <span>Download .{transcriptFormat.toUpperCase()}</span>
               </button>
             </div>
+            </motion.div>
           </div>
-        </div>
-      )}
+        )}
+      </AnimatePresence>
     </div>
   );
 };

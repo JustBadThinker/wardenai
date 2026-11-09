@@ -7,8 +7,8 @@
  * with spring physics, ambient glow bloom, and seamless zoom-dissolve into Home.
  */
 
-import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import React, { useEffect } from 'react';
+import { motion } from 'motion/react';
 
 interface AppSplashScreenProps {
   onComplete: () => void;
@@ -19,46 +19,31 @@ export const AppSplashScreen: React.FC<AppSplashScreenProps> = ({
   onComplete,
   duration = 980
 }) => {
-  const [phase, setPhase] = useState<'intro' | 'exit'>('intro');
-
   useEffect(() => {
-    // Phase 1: Play intro animation for ~700ms
-    const exitTimer = setTimeout(() => {
-      setPhase('exit');
-    }, Math.max(500, duration - 320));
-
-    // Phase 2: Complete and unmount after exit dissolve
     const completeTimer = setTimeout(() => {
       onComplete();
     }, duration);
 
     return () => {
-      clearTimeout(exitTimer);
       clearTimeout(completeTimer);
     };
   }, [duration, onComplete]);
 
-  // Tap to instantly skip if user is in a hurry
-  const handleFastSkip = () => {
-    onComplete();
-  };
-
   return (
-    <AnimatePresence>
-      {phase !== 'exit' ? (
-        <motion.div
-          key="warden-splash-screen"
-          initial={{ opacity: 1 }}
-          exit={{
-            opacity: 0,
-            scale: 1.12,
-            filter: 'blur(8px)',
-            transition: { duration: 0.32, ease: [0.32, 0.72, 0, 1] }
-          }}
-          onClick={handleFastSkip}
-          className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-[#08090d] select-none cursor-pointer overflow-hidden transform-gpu"
-          style={{ willChange: 'transform, opacity' }}
-        >
+    <motion.div
+      key="warden-splash-screen"
+      initial={{ opacity: 1 }}
+      animate={{ opacity: 1 }}
+      exit={{
+        opacity: 0,
+        scale: 1.08,
+        filter: 'blur(10px)',
+        transition: { duration: 0.42, ease: [0.16, 1, 0.3, 1] }
+      }}
+      onClick={onComplete}
+      className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-[#08090d] select-none cursor-pointer overflow-hidden transform-gpu"
+      style={{ willChange: 'transform, opacity, filter' }}
+    >
           {/* ── Ambient Radial Glow Bloom (Pulsing behind icon) ── */}
           <motion.div
             initial={{ scale: 0.6, opacity: 0 }}
@@ -173,8 +158,6 @@ export const AppSplashScreen: React.FC<AppSplashScreenProps> = ({
             />
           </div>
         </motion.div>
-      ) : null}
-    </AnimatePresence>
   );
 };
 

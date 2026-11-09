@@ -94,6 +94,9 @@ export default function App() {
   type MainTab = typeof MAIN_TABS[number];
   const isMainTab = (v: string): v is MainTab => MAIN_TABS.includes(v as MainTab);
 
+  const [touchDragX, setTouchDragX] = useState(0);
+  const isHorizontalDragRef = useRef(false);
+
   const navigateWithDirection = (nextView: string) => {
     const curIdx = SWIPE_TABS.indexOf(activeView);
     const nextIdx = SWIPE_TABS.indexOf(nextView);
@@ -137,28 +140,57 @@ export default function App() {
   const handleTouchStart = (e: React.TouchEvent) => {
     if (!isMainTab(activeView) || isSearchModalOpen || isInsideHorizontalScroll(e.target)) {
       touchStartRef.current = null;
+      isHorizontalDragRef.current = false;
       return;
     }
     const t = e.touches[0];
     touchStartRef.current = { x: t.clientX, y: t.clientY };
+    isHorizontalDragRef.current = false;
   };
 
-  const handleTouchMove = (_e: React.TouchEvent) => {
-    // Keep touch scrolling fluid; page navigation cleanly triggers on touchEnd release
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!touchStartRef.current) return;
+    const t = e.touches[0];
+    const dx = t.clientX - touchStartRef.current.x;
+    const dy = t.clientY - touchStartRef.current.y;
+
+    // Detect horizontal intention
+    if (!isHorizontalDragRef.current) {
+      if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy) * 1.25) {
+        isHorizontalDragRef.current = true;
+      } else if (Math.abs(dy) > 10) {
+        // Normal vertical scrolling: clear touchStartRef so vertical scroll has zero lag
+        touchStartRef.current = null;
+        return;
+      }
+    }
+
+    if (isHorizontalDragRef.current) {
+      const curIdx = SWIPE_TABS.indexOf(activeView);
+      // Soft boundary dampening if user drags beyond edges
+      const isAtLeftBoundary = curIdx === 0 && dx > 0;
+      const isAtRightBoundary = curIdx === SWIPE_TABS.length - 1 && dx < 0;
+      const dampedDx = (isAtLeftBoundary || isAtRightBoundary) ? dx * 0.18 : dx * 0.55;
+      setTouchDragX(dampedDx);
+    }
   };
 
   const handleTouchEnd = (e: React.TouchEvent) => {
     if (!touchStartRef.current || !isMainTab(activeView) || isSearchModalOpen) {
       touchStartRef.current = null;
+      isHorizontalDragRef.current = false;
+      setTouchDragX(0);
       return;
     }
     const t = e.changedTouches[0];
     const dx = t.clientX - touchStartRef.current.x;
     const dy = t.clientY - touchStartRef.current.y;
     touchStartRef.current = null;
+    isHorizontalDragRef.current = false;
+    setTouchDragX(0);
 
-    // Organic swipe: at least 48px horizontal distance and predominantly horizontal movement
-    if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy) * 1.2) {
+    // Responsive swipe: 36px horizontal distance and predominantly horizontal movement
+    if (Math.abs(dx) > 36 && Math.abs(dx) > Math.abs(dy) * 1.15) {
       const curIdx = SWIPE_TABS.indexOf(activeView);
       if (curIdx === -1) return;
       if (dx < 0 && curIdx < SWIPE_TABS.length - 1) {
@@ -171,6 +203,8 @@ export default function App() {
 
   const handleTouchCancel = () => {
     touchStartRef.current = null;
+    isHorizontalDragRef.current = false;
+    setTouchDragX(0);
   };
 
   // Keyboard shortcut: Cmd+K / Ctrl+K / / to open quick search modal
@@ -886,6 +920,10 @@ export default function App() {
               className={`w-full h-full relative ${
                 isMainTab(activeView) ? 'z-10' : 'z-0 pointer-events-none invisible'
               }`}
+              style={{
+                transform: touchDragX !== 0 ? `translate3d(${touchDragX}px, 0, 0)` : undefined,
+                transition: touchDragX === 0 ? 'transform 0.22s cubic-bezier(0.16, 1, 0.3, 1)' : 'none'
+              }}
             >
               {/* 1. Home Tab */}
               <div
@@ -1010,19 +1048,24 @@ export default function App() {
                   key={activeView}
                   initial={{
                     opacity: 0,
-                    x: slideDirection !== 0 ? slideDirection * 20 : 0
+                    x: activeView === 'chat' ? '30%' : (slideDirection !== 0 ? slideDirection * 20 : 0),
+                    scale: activeView === 'chat' ? 1 : 0.985
                   }}
                   animate={{
                     opacity: 1,
-                    x: 0
+                    x: 0,
+                    scale: 1
                   }}
                   exit={{
                     opacity: 0,
-                    x: slideDirection !== 0 ? slideDirection * -16 : 0
+                    x: activeView === 'chat' ? '30%' : (slideDirection !== 0 ? slideDirection * -16 : 0),
+                    scale: activeView === 'chat' ? 1 : 0.985
                   }}
                   transition={{
-                    duration: 0.16,
-                    ease: [0.16, 1, 0.3, 1]
+                    type: 'spring',
+                    damping: 30,
+                    stiffness: 340,
+                    mass: 0.8
                   }}
                   className={`absolute inset-0 z-20 bg-neutral-950 transform-gpu ${
                     activeView === 'chat'
@@ -1484,10 +1527,12 @@ export default function App() {
         }}
       />
 
-      {/* Native App Opening Splash & Boot Sequence */}
-      {isAppBooting && (
-        <AppSplashScreen onComplete={() => setIsAppBooting(false)} duration={950} />
-      )}
+      {/* Native App Opening Splash & Boot Sequence with smooth zoom-dissolve exit */}
+      <AnimatePresence>
+        {isAppBooting && (
+          <AppSplashScreen onComplete={() => setIsAppBooting(false)} duration={1050} />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
