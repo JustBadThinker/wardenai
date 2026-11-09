@@ -61,6 +61,9 @@ interface DiscoverViewProps {
   onImportCard?: (card: ImportedCardData) => void;
   currentUserId?: string;
   onViewCreatorProfile?: (creatorIdentifier: string) => void;
+  /** When true, switch to Explore All, scroll to top and focus the search input */
+  focusSearchRequest?: boolean;
+  onSearchFocusHandled?: () => void;
 }
 
 type DiscoverTab = 'community' | 'library' | 'webhub';
@@ -86,10 +89,26 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
   onOpenImportModal,
   onImportCard,
   currentUserId = 'default',
-  onViewCreatorProfile
+  onViewCreatorProfile,
+  focusSearchRequest = false,
+  onSearchFocusHandled
 }) => {
   // Main view tab
   const [activeTab, setActiveTab] = useState<DiscoverTab>('community');
+  const communityScrollRef = useRef<HTMLDivElement | null>(null);
+  const communitySearchInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Header Search button: jump to Explore All, scroll to top, focus search box
+  useEffect(() => {
+    if (!focusSearchRequest) return;
+    setActiveTab('community');
+    const t = setTimeout(() => {
+      communityScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+      communitySearchInputRef.current?.focus({ preventScroll: true });
+      onSearchFocusHandled?.();
+    }, 60);
+    return () => clearTimeout(t);
+  }, [focusSearchRequest, onSearchFocusHandled]);
 
   // Community State
   const [communityCharacters, setCommunityCharacters] = useState<CommunityCharacter[]>([]);
@@ -642,12 +661,13 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
         {/* TAB 1: EXPLORE ALL CATALOG (Image 3 Layout) */}
         {/* ══════════════════════════════════════════════════════════════════════ */}
         {activeTab === 'community' && (
-          <div className="w-full h-full overflow-y-auto px-3 sm:px-6 py-4 space-y-4 pb-28 max-w-7xl mx-auto">
+          <div ref={communityScrollRef} className="w-full h-full overflow-y-auto px-3 sm:px-6 py-4 space-y-4 pb-28 max-w-7xl mx-auto">
             {/* Search Bar */}
             <form onSubmit={handleCommunitySearchSubmit} className="flex items-center gap-2.5">
               <div className="flex-1 relative flex items-center">
                 <Search className="w-4 h-4 text-neutral-400 absolute left-3.5 pointer-events-none" />
                 <input
+                  ref={communitySearchInputRef}
                   type="text"
                   value={communitySearchInput}
                   onChange={e => setCommunitySearchInput(e.target.value)}

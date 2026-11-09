@@ -82,6 +82,8 @@ export default function App() {
   const [slideDirection, setSlideDirection] = useState<number>(0);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  // Set when the header Search button is tapped; DiscoverView consumes it to focus its search box
+  const [pendingSearchFocus, setPendingSearchFocus] = useState(false);
 
   const SWIPE_TABS = ['home', 'discover', 'chats', 'profile'];
 
@@ -739,7 +741,10 @@ export default function App() {
               contentRating={contentRating}
               onChangeContentRating={handleRequestContentRating}
               onOpenMobileMenu={() => setIsMobileMenuOpen(true)}
-              onOpenSearch={() => setActiveView('discover')}
+              onOpenSearch={() => {
+                setPendingSearchFocus(true);
+                if (activeView !== 'discover') navigateWithDirection('discover');
+              }}
               onNavigate={setActiveView}
               activeView={activeView}
             />
@@ -813,6 +818,8 @@ export default function App() {
                 onImportCard={handleDirectImportCard}
                 currentUserId={currentUser.id}
                 onViewCreatorProfile={handleViewCreatorProfile}
+                focusSearchRequest={pendingSearchFocus}
+                onSearchFocusHandled={() => setPendingSearchFocus(false)}
               />
             )}
 
