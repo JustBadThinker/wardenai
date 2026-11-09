@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import {
@@ -61,9 +61,55 @@ export const CommunityCharacterModal: React.FC<CommunityCharacterModalProps> = (
   const [detail, setDetail] = useState<CommunityCharacterDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'firstMessage' | 'scenarios'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'firstMessage' | 'scenarios' | 'gallery'>('overview');
   const [revealed, setRevealed] = useState(false);
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
+  const [lightboxImageUrl, setLightboxImageUrl] = useState<string>('');
+  const [lightboxImageTitle, setLightboxImageTitle] = useState<string>('');
+
+  // Extract all media images for character (Avatar, Description banners, Scenario illustrations)
+  const communityGallery = useMemo(() => {
+    if (!character) return [];
+    const items: Array<{ id: string; url: string; title: string; source: string }> = [];
+    const seen = new Set<string>();
+
+    const add = (rawUrl: string | undefined | null, title: string, source: string) => {
+      if (!rawUrl) return;
+      const url = rawUrl.trim();
+      if (!url || (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('data:image/')) || seen.has(url)) return;
+      seen.add(url);
+      items.push({ id: `${source.toLowerCase()}_${items.length}`, url, title, source });
+    };
+
+    if (detail?.avatarUrl) add(detail.avatarUrl, `${character.name} (Artwork)`, 'Avatar');
+    if (character.avatarUrl) add(character.avatarUrl, `${character.name} (Card)`, 'Avatar');
+
+    const corpus = [
+      detail?.descriptionHtml,
+      character.shortDescription,
+      detail?.scenario,
+      detail?.firstMessage,
+      ...(detail?.alternateGreetings || [])
+    ].filter(Boolean).join('\n\n');
+
+    const mdRegex = /!\[([^\]]*)\]\(\s*(https?:\/\/[^\s)]+|data:image\/[^\s)]+)\s*\)/gi;
+    let match: RegExpExecArray | null;
+    while ((match = mdRegex.exec(corpus)) !== null) {
+      add(match[2]?.trim(), match[1]?.trim() || `${character.name} illustration`, 'Description');
+    }
+
+    const htmlRegex = /<img[^>]+src=["'](https?:\/\/[^"'>]+|data:image\/[^"'>]+)["'][^>]*>/gi;
+    while ((match = htmlRegex.exec(corpus)) !== null) {
+      add(match[1]?.trim(), `${character.name} media`, 'Media');
+    }
+
+    const standaloneRegex = /(?:^|\s)(https?:\/\/[^\s<>"']+\.(?:png|jpe?g|webp|gif)(?:\?[^\s<>"']*)?)(?:\s|$)/gi;
+    while ((match = standaloneRegex.exec(corpus)) !== null) {
+      add(match[1]?.trim(), `${character.name} scene`, 'Illustration');
+    }
+
+    return items;
+  }, [character, detail]);
 
   useEffect(() => {
     if (!character || !isOpen) {
@@ -72,6 +118,8 @@ export const CommunityCharacterModal: React.FC<CommunityCharacterModalProps> = (
       setActiveTab('overview');
       setRevealed(false);
       setIsLightboxOpen(false);
+      setLightboxImageUrl('');
+      setLightboxImageTitle('');
       return;
     }
 
@@ -141,7 +189,13 @@ export const CommunityCharacterModal: React.FC<CommunityCharacterModalProps> = (
             >
               {/* Header Artwork & Info Hero (Compact on mobile so buttons and text are immediately visible) */}
               <div
-                onClick={() => !shouldBlur && setIsLightboxOpen(true)}
+                onClick={() => {
+                  if (!shouldBlur) {
+                    setLightboxImageUrl(detail?.avatarUrl || character.avatarUrl);
+                    setLightboxImageTitle(character.name);
+                    setIsLightboxOpen(true);
+                  }
+                }}
                 className={`relative h-36 sm:h-60 w-full bg-[#0c0e14] shrink-0 overflow-hidden ${
                   !shouldBlur ? 'cursor-pointer group' : ''
                 }`}
@@ -176,7 +230,11 @@ export const CommunityCharacterModal: React.FC<CommunityCharacterModalProps> = (
                   {/* Quick Download HD Image button */}
                   <button
                     type="button"
-                    onClick={() => setIsLightboxOpen(true)}
+                    onClick={() => {
+                      setLightboxImageUrl(detail?.avatarUrl || character.avatarUrl);
+                      setLightboxImageTitle(character.name);
+                      setIsLightboxOpen(true);
+                    }}
                     className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-black/60 hover:bg-black/80 backdrop-blur-md border border-white/10 flex items-center justify-center text-neutral-300 hover:text-white transition-all cursor-pointer active:scale-95"
                     title="View & Download HD Artwork"
                   >
@@ -326,6 +384,21 @@ export const CommunityCharacterModal: React.FC<CommunityCharacterModalProps> = (
                 Alternates ({detail.alternateGreetings.length})
               </button>
             )}
+            {communityGallery.length > 0 && (
+              <button
+                onClick={() => setActiveTab('gallery')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 ${
+                  activeTab === 'gallery'
+                    ? 'bg-purple-600 text-white'
+                    : 'text-neutral-400 hover:text-white'
+                }`}
+              >
+                <span>Gallery</span>
+                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-black/40 text-purple-300 font-semibold">
+                  {communityGallery.length}
+                </span>
+              </button>
+            )}
           </div>
 
           <a
@@ -429,6 +502,50 @@ export const CommunityCharacterModal: React.FC<CommunityCharacterModalProps> = (
               </div>
             </div>
           )}
+
+          {!loading && activeTab === 'gallery' && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between pb-1">
+                <h4 className="text-xs font-bold text-neutral-200 uppercase tracking-wider">
+                  Character Media Gallery ({communityGallery.length})
+                </h4>
+                <span className="text-[11px] text-neutral-400">
+                  Tap to preview in HD & download
+                </span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {communityGallery.map((img) => (
+                  <div
+                    key={img.id}
+                    onClick={() => {
+                      setLightboxImageUrl(img.url);
+                      setLightboxImageTitle(img.title);
+                      setIsLightboxOpen(true);
+                    }}
+                    className="group relative aspect-[3/4] rounded-xl overflow-hidden bg-[#141824] border border-[#1e2334] hover:border-purple-500/50 shadow-md cursor-pointer transition-all active:scale-[0.98]"
+                  >
+                    <img
+                      src={img.url}
+                      alt={img.title}
+                      referrerPolicy="no-referrer"
+                      loading="lazy"
+                      className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-80 group-hover:opacity-100 transition-opacity" />
+                    <span className="absolute top-2 left-2 px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-black/70 backdrop-blur-md text-purple-300 border border-white/10 shadow-sm">
+                      {img.source}
+                    </span>
+                    <div className="absolute bottom-2 inset-x-2 flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-white line-clamp-1 drop-shadow-md">
+                        {img.title}
+                      </span>
+                      <Download className="w-3.5 h-3.5 text-purple-300" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Floating Frosted Modal Action Footer (Always reachable above mobile bottom bars) */}
@@ -476,8 +593,8 @@ export const CommunityCharacterModal: React.FC<CommunityCharacterModalProps> = (
   <ImageLightboxModal
     isOpen={isLightboxOpen}
     onClose={() => setIsLightboxOpen(false)}
-    imageUrl={detail?.avatarUrl || character?.avatarUrl || ''}
-    title={character?.name}
+    imageUrl={lightboxImageUrl || detail?.avatarUrl || character?.avatarUrl || ''}
+    title={lightboxImageTitle || character?.name}
   />
 </>,
 document.body

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   ChevronLeft,
   MoreVertical,
@@ -30,7 +30,8 @@ import {
   GitFork,
   Trash2,
   Loader2,
-  FileText
+  FileText,
+  ZoomIn
 } from 'lucide-react';
 import { Character, CharacterScenario, CharacterReview, Persona, User as UserModel } from '../types';
 import { RichTextRenderer } from '../components/common/RichTextRenderer';
@@ -46,6 +47,104 @@ import {
   generateSillyTavernPngCard,
   downloadFile
 } from '../utils/cardExport';
+
+export interface GalleryMediaItem {
+  id: string;
+  url: string;
+  title: string;
+  source: 'Avatar' | 'Cover' | 'Scenario' | 'Description' | 'Illustration';
+}
+
+/**
+ * Extracts and aggregates all images associated with a character:
+ * Avatar, Cover, Scenario images, and inline Markdown/HTML/URL illustrations in descriptions & scenarios.
+ */
+export function extractCharacterGallery(character: Character): GalleryMediaItem[] {
+  const items: GalleryMediaItem[] = [];
+  const seenUrls = new Set<string>();
+
+  const pushItem = (
+    rawUrl: string | undefined | null,
+    title: string,
+    source: GalleryMediaItem['source']
+  ) => {
+    if (!rawUrl) return;
+    const url = rawUrl.trim();
+    if (!url || (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('data:image/'))) return;
+    if (seenUrls.has(url)) return;
+    seenUrls.add(url);
+    items.push({
+      id: `${source.toLowerCase()}_${items.length}_${url.slice(-8)}`,
+      url,
+      title,
+      source
+    });
+  };
+
+  // 1. Character Avatar
+  pushItem(character.avatarUrl, `${character.name} (Avatar)`, 'Avatar');
+
+  // 2. Character Cover Banner
+  pushItem(character.coverUrl, `${character.name} (Cover Artwork)`, 'Cover');
+
+  // 3. Scenario Image fields
+  if (character.scenarios && Array.isArray(character.scenarios)) {
+    character.scenarios.forEach((sc, idx) => {
+      if (sc.imageUrl) {
+        pushItem(sc.imageUrl, sc.title || `Scenario #${idx + 1}`, 'Scenario');
+      }
+    });
+  }
+
+  // 4. Text corpus extraction from descriptions, backgrounds, scenarios, & notes
+  const textCorpus = [
+    (character as any).description,
+    character.shortDescription,
+    character.background,
+    character.personality,
+    character.firstMessage,
+    character.creatorNotes,
+    ...(character.scenarios || []).map(
+      s => `${s.title}\n${s.description}\n${s.openingMessage}\n${s.scenarioInstructions}`
+    )
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+
+  // Markdown images: ![alt](url)
+  const mdRegex = /!\[([^\]]*)\]\(\s*(https?:\/\/[^\s)]+|data:image\/[^\s)]+)\s*\)/gi;
+  let match: RegExpExecArray | null;
+  while ((match = mdRegex.exec(textCorpus)) !== null) {
+    const alt = match[1]?.trim() || `${character.name} illustration`;
+    const url = match[2]?.trim();
+    pushItem(url, alt, 'Description');
+  }
+
+  // HTML images: <img src="url" ...>
+  const htmlRegex = /<img[^>]+src=["'](https?:\/\/[^"'>]+|data:image\/[^"'>]+)["'][^>]*>/gi;
+  while ((match = htmlRegex.exec(textCorpus)) !== null) {
+    const url = match[1]?.trim();
+    pushItem(url, `${character.name} scene`, 'Description');
+  }
+
+  // Standalone image links in text: https://...png/jpg/webp/gif
+  const standaloneRegex = /(?:^|\s)(https?:\/\/[^\s<>"']+\.(?:png|jpe?g|webp|gif)(?:\?[^\s<>"']*)?)(?:\s|$)/gi;
+  while ((match = standaloneRegex.exec(textCorpus)) !== null) {
+    const url = match[1]?.trim();
+    pushItem(url, `${character.name} artwork`, 'Illustration');
+  }
+
+  // 5. Extra gallery property if card carries an explicit array
+  if ((character as any).gallery && Array.isArray((character as any).gallery)) {
+    (character as any).gallery.forEach((g: any, idx: number) => {
+      const url = typeof g === 'string' ? g : g?.url;
+      const title = typeof g === 'object' && g?.title ? g.title : `Artwork #${idx + 1}`;
+      pushItem(url, title, 'Illustration');
+    });
+  }
+
+  return items;
+}
 
 interface CharacterProfileViewProps {
   character: Character;
@@ -93,6 +192,7 @@ export const CharacterProfileView: React.FC<CharacterProfileViewProps> = ({
   const [selectedScenario, setSelectedScenario] = useState<CharacterScenario | undefined>(
     character.scenarios?.[0]
   );
+  const galleryImages = useMemo(() => extractCharacterGallery(character), [character]);
 
   // Reviews & Ratings State
   const [reviews, setReviews] = useState<CharacterReview[]>(() =>
@@ -480,13 +580,16 @@ export const CharacterProfileView: React.FC<CharacterProfileViewProps> = ({
 
           <button
             onClick={() => setActiveTab('gallery')}
-            className={`pb-3 transition-colors relative cursor-pointer shrink-0 ${
+            className={`pb-3 transition-colors relative cursor-pointer flex items-center gap-1.5 shrink-0 ${
               activeTab === 'gallery'
                 ? 'text-white border-b-2 border-purple-500'
                 : 'text-neutral-400 hover:text-neutral-200'
             }`}
           >
-            Gallery
+            <span>Gallery</span>
+            <span className="text-xs px-1.5 py-0.2 rounded-full bg-[#181c28] text-neutral-400 font-semibold">
+              {galleryImages.length}
+            </span>
           </button>
 
           <button
@@ -518,10 +621,10 @@ export const CharacterProfileView: React.FC<CharacterProfileViewProps> = ({
           <div className="space-y-6 w-full min-w-0 break-words">
             {/* Description Text & Rich Media (Supports Images, Links & Markdown) */}
             <div className="text-sm leading-relaxed text-neutral-300 space-y-4 font-normal">
-              <RichTextRenderer content={character.shortDescription} />
+              <RichTextRenderer content={character.shortDescription} allowImages={true} />
               {character.background && (
                 <div className="pt-1 text-neutral-300/90 border-t border-[#1b1e28]/60">
-                  <RichTextRenderer content={character.background} />
+                  <RichTextRenderer content={character.background} allowImages={true} />
                 </div>
               )}
               {character.personality && (
@@ -629,6 +732,32 @@ export const CharacterProfileView: React.FC<CharacterProfileViewProps> = ({
                     )}
                   </h4>
                 </div>
+                {/* Scenario Illustration / Art Preview if available */}
+                {sc.imageUrl && (
+                  <div
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setLightboxImage({ url: sc.imageUrl!, title: sc.title });
+                    }}
+                    className="my-3 relative w-full sm:max-w-md h-48 rounded-xl overflow-hidden border border-purple-500/30 bg-[#0c0e14] cursor-pointer group shadow-lg"
+                    title="Click to view & download HD scenario artwork"
+                  >
+                    <img
+                      src={sc.imageUrl}
+                      alt={sc.title}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-between p-3">
+                      <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <ZoomIn className="w-3.5 h-3.5 text-purple-300" />
+                        <span>View Full HD Artwork</span>
+                      </span>
+                      <span className="px-2 py-0.5 rounded bg-black/60 text-[10px] text-purple-300 border border-white/10 font-bold">
+                        HD
+                      </span>
+                    </div>
+                  </div>
+                )}
                 <div className="text-xs text-neutral-300 mt-1">
                   <RichTextRenderer content={sc.description} allowImages={true} />
                 </div>
@@ -657,13 +786,68 @@ export const CharacterProfileView: React.FC<CharacterProfileViewProps> = ({
 
         {/* Tab Content: Gallery */}
         {activeTab === 'gallery' && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            <div className="aspect-[3/4] rounded-xl overflow-hidden bg-[#12151e] border border-[#1b1e28]">
-              <img src={character.avatarUrl} alt="Avatar" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
+          <div className="space-y-4">
+            <div className="flex items-center justify-between pb-1">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-neutral-300 uppercase tracking-wider">
+                  Character Media Gallery
+                </span>
+                <span className="px-2.5 py-0.5 rounded-full bg-purple-950/40 text-purple-300 border border-purple-800/30 text-xs font-bold">
+                  {galleryImages.length} {galleryImages.length === 1 ? 'artwork' : 'artworks'}
+                </span>
+              </div>
+              <p className="text-[11px] text-neutral-400 hidden sm:block">
+                Tap any artwork to open high-definition lightbox preview and download
+              </p>
             </div>
-            {character.coverUrl && (
-              <div className="aspect-[3/4] rounded-xl overflow-hidden bg-[#12151e] border border-[#1b1e28]">
-                <img src={character.coverUrl} alt="Cover" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
+
+            {galleryImages.length === 0 ? (
+              <div className="p-8 text-center text-xs text-neutral-400 bg-[#12151e] border border-[#1b1e28] rounded-2xl">
+                No gallery artwork available for this character.
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3.5">
+                {galleryImages.map((img) => (
+                  <div
+                    key={img.id}
+                    onClick={() => setLightboxImage({ url: img.url, title: img.title })}
+                    className="group relative aspect-[3/4] rounded-2xl overflow-hidden bg-[#12151e] border border-[#1b1e28] hover:border-purple-500/50 shadow-lg cursor-pointer transition-all duration-300 hover:shadow-purple-900/20 active:scale-[0.98]"
+                  >
+                    <img
+                      src={img.url}
+                      alt={img.title}
+                      referrerPolicy="no-referrer"
+                      loading="lazy"
+                      className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-500"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent opacity-80 group-hover:opacity-95 transition-opacity" />
+
+                    {/* Top Source Badge */}
+                    <div className="absolute top-2 left-2 z-10">
+                      <span className="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-black/70 backdrop-blur-md text-purple-300 border border-white/10 shadow-sm">
+                        {img.source}
+                      </span>
+                    </div>
+
+                    {/* Bottom Info & Download Action */}
+                    <div className="absolute bottom-2.5 inset-x-2.5 z-10 flex items-end justify-between gap-1.5">
+                      <span className="text-[11px] font-bold text-white line-clamp-1 drop-shadow-md">
+                        {img.title}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setLightboxImage({ url: img.url, title: img.title });
+                        }}
+                        className="p-1.5 rounded-lg bg-black/60 hover:bg-purple-600/90 text-white backdrop-blur-md transition-colors"
+                        title="Preview & Download HD"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>
