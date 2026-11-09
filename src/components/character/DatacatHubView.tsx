@@ -16,8 +16,8 @@ import {
   X,
   Maximize2,
   Minimize2,
-  ZoomOut,
-  ZoomIn,
+  RotateCw,
+  ExternalLink,
   Download
 } from 'lucide-react';
 import { CharacterImportService, ImportedCardData } from '../../services/characterImportService';
@@ -339,6 +339,8 @@ export const DatacatHubView: React.FC<DatacatHubViewProps> = ({
     }
   };
 
+  const [iframeReloadKey, setIframeReloadKey] = useState(0);
+
   return (
     <div
       data-no-swipe="true"
@@ -347,27 +349,20 @@ export const DatacatHubView: React.FC<DatacatHubViewProps> = ({
           ? 'fixed inset-0 z-[70] h-[100dvh] w-full'
           : 'relative w-full h-full flex-1 min-h-0'
       } overflow-hidden bg-[#0a0b0e] flex flex-col`}>
-      {/* ── Seamless Full-Bleed Embedded Frame (Native 100% Mobile Scale ensures perfect touch & scroll) ── */}
+      {/* ── Seamless Full-Bleed Embedded Frame (Native 100% scale ensures 1:1 pixel touch & click mapping) ── */}
       <iframe
-        key={reloadTrigger}
+        key={`${reloadTrigger}-${iframeReloadKey}`}
         ref={iframeRef}
         src={iframeSrc}
         title="Datacat Character Hub"
         style={{
-          ...(compactScale
-            ? {
-                width: '128.2%',
-                height: '128.2%',
-                transform: 'scale(0.78)',
-                transformOrigin: 'top left'
-              }
-            : {}),
-          WebkitOverflowScrolling: 'touch',
-          overscrollBehavior: 'contain'
+          width: '100%',
+          height: '100%',
+          touchAction: 'auto',
+          WebkitOverflowScrolling: 'touch'
         }}
         className="w-full h-full flex-1 min-h-0 border-0 block"
         loading="eager"
-        sandbox="allow-downloads allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts allow-pointer-lock"
         referrerPolicy="no-referrer"
       />
 
@@ -377,7 +372,7 @@ export const DatacatHubView: React.FC<DatacatHubViewProps> = ({
           type="button"
           onClick={() => setIsPillExpanded(true)}
           className="absolute bottom-3.5 right-3.5 z-40 w-11 h-11 rounded-full bg-gradient-to-tr from-purple-600/90 to-indigo-600/90 hover:from-purple-500 hover:to-indigo-500 backdrop-blur-2xl border border-white/25 shadow-[0_8px_28px_rgba(0,0,0,0.65)] flex items-center justify-center text-white cursor-pointer active:scale-90 transition-all animate-scale-in"
-          title="Open Quick Import & Screen Fit Tools"
+          title="Open Datacat Hub Tools"
         >
           <Sparkles className="w-5 h-5" />
           {lastPreviewedCharId && (
@@ -385,20 +380,25 @@ export const DatacatHubView: React.FC<DatacatHubViewProps> = ({
           )}
         </button>
       ) : (
-        <div className="absolute bottom-3.5 right-3.5 z-40 flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-[#0c0e14]/85 backdrop-blur-2xl border border-purple-500/40 shadow-[0_8px_32px_rgba(0,0,0,0.7)] text-xs text-white animate-scale-in">
+        <div className="absolute bottom-3.5 right-3.5 z-40 flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-[#0c0e14]/90 backdrop-blur-2xl border border-purple-500/40 shadow-[0_8px_32px_rgba(0,0,0,0.7)] text-xs text-white animate-scale-in">
           <button
             type="button"
-            onClick={() => setCompactScale(prev => !prev)}
-            className={`px-2.5 py-1 rounded-full flex items-center gap-1 font-bold transition-colors cursor-pointer ${
-              compactScale
-                ? 'bg-purple-600/30 text-purple-200 border border-purple-400/40'
-                : 'hover:bg-white/10 text-neutral-300'
-            }`}
-            title="Fit large Datacat character preview on mobile screen"
+            onClick={() => setIframeReloadKey(k => k + 1)}
+            className="p-1.5 rounded-full hover:bg-white/10 text-neutral-300 hover:text-white transition-colors cursor-pointer"
+            title="Reload Datacat Web Frame"
           >
-            {compactScale ? <ZoomIn className="w-3.5 h-3.5" /> : <ZoomOut className="w-3.5 h-3.5" />}
-            <span>{compactScale ? '78%' : '100%'}</span>
+            <RotateCw className="w-3.5 h-3.5" />
           </button>
+
+          <a
+            href="https://datacat.run"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="p-1.5 rounded-full hover:bg-white/10 text-neutral-300 hover:text-white transition-colors cursor-pointer"
+            title="Open Datacat in External Browser"
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+          </a>
 
           <div className="w-px h-4 bg-white/15" />
 
