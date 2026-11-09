@@ -11,10 +11,10 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: 'npm'
@@ -43,7 +43,7 @@ jobs:
           ./gradlew assembleDebug
 
       - name: Upload Debug APK Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: WardenAI-Debug-APK
           path: android/app/build/outputs/apk/debug/app-debug.apk
