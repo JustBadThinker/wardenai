@@ -25,6 +25,7 @@ import {
 import { firebaseAuthService, DEMO_ACCOUNTS } from './services/firebaseAuth';
 import { storageService } from './services/storageService';
 import { extractCleanCharacterName } from './services/aiProviderService';
+import { ttsService } from './services/ttsService';
 import { App as CapApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 import { TopHeader } from './components/navigation/TopHeader';
@@ -343,6 +344,7 @@ export default function App() {
 
     // 3. Hierarchical sub-views back to their parent views
     if (currentView === 'chat') {
+      ttsService.stop();
       setActiveView(conversations.length > 0 ? 'chats' : 'discover');
       return;
     }
@@ -398,6 +400,10 @@ export default function App() {
   useEffect(() => {
     // Keep browser history stack ready for hardware back pops
     window.history.pushState({ view: activeView }, '');
+    // Immediately stop & kill any ongoing TTS synthesis and audio playback if navigating away from chat
+    if (activeView !== 'chat') {
+      ttsService.stop();
+    }
   }, [activeView]);
   // ──────────────────────────────────────────────────────────────────────────
 
@@ -719,13 +725,26 @@ export default function App() {
     setCharacters([...storageService.getCharacters()]);
   };
 
-  const handleToggleFollow = (creatorId: string) => {
-    if (storageService.isFollowing(currentUser.id, creatorId)) {
-      storageService.unfollowUser(currentUser.id, creatorId);
-    } else {
-      storageService.followUser(currentUser.id, creatorId);
+  const handleToggleFollow = (creatorId: string, creatorName?: string, avatarUrl?: string) => {
+    const targetName = (creatorName || creatorId || '').replace(/^@+/, '').trim();
+    if (targetName) {
+      storageService.toggleFollowCreator(currentUser.id, targetName, avatarUrl);
+    }
+    if (creatorId && creatorId !== targetName) {
+      if (storageService.isFollowing(currentUser.id, creatorId)) {
+        storageService.unfollowUser(currentUser.id, creatorId);
+      } else {
+        storageService.followUser(currentUser.id, creatorId);
+      }
     }
     setCharacters([...storageService.getCharacters()]);
+  };
+
+  const handleTagSearch = (tagNameOrSlug: string) => {
+    if (!tagNameOrSlug) return;
+    const cleanTag = tagNameOrSlug.replace(/^[^\w\s]+/, '').trim();
+    navigateWithDirection('discover');
+    window.dispatchEvent(new CustomEvent('warden-search-tag', { detail: { tag: cleanTag } }));
   };
 
   // View Creator Profile (BUG #11: dynamically resolves both demo accounts and community/imported creators)
@@ -956,10 +975,7 @@ export default function App() {
                   isBookmarked={id => storageService.isBookmarked(id)}
                   onToggleBookmark={handleToggleBookmark}
                   onToggleLike={handleToggleLike}
-                  onSelectTag={slug => {
-                    setSelectedTagSlugs([slug]);
-                    navigateWithDirection('discover');
-                  }}
+                  onSelectTag={handleTagSearch}
                   onOpenImportModal={() => setIsGlobalImportOpen(true)}
                   onImportCard={handleDirectImportCard}
                 />
@@ -1090,8 +1106,14 @@ export default function App() {
                       personas={personas}
                       activePersona={activePersona}
                       currentUser={currentUser}
-                      isFollowingCreator={storageService.isFollowing(currentUser.id, selectedCharacter.creatorId)}
+                      isFollowingCreator={
+                        storageService.isFollowingCreator(
+                          currentUser.id,
+                          selectedCharacter.creatorUsername || selectedCharacter.creatorId
+                        ) || storageService.isFollowing(currentUser.id, selectedCharacter.creatorId)
+                      }
                       onToggleFollow={handleToggleFollow}
+                      onTagClick={handleTagSearch}
                       isBookmarked={storageService.isBookmarked(selectedCharacter.id)}
                       onToggleBookmark={handleToggleBookmark}
                       onToggleLike={handleToggleLike}
@@ -1295,8 +1317,11 @@ export default function App() {
                       user={selectedCreatorProfile}
                       characters={characters}
                       currentUser={currentUser}
-                      isFollowing={storageService.isFollowing(currentUser.id, selectedCreatorProfile.id)}
-                      onToggleFollow={handleToggleFollow}
+                      isFollowing={
+                        storageService.isFollowingCreator(currentUser.id, selectedCreatorProfile.username || selectedCreatorProfile.id) ||
+                        storageService.isFollowing(currentUser.id, selectedCreatorProfile.id)
+                      }
+                      onToggleFollow={(uid) => handleToggleFollow(uid, selectedCreatorProfile.username, selectedCreatorProfile.avatarUrl)}
                       onSelectCharacter={handleSelectCharacter}
                       onStartChat={handleSelectCharacter}
                       isBookmarked={id => storageService.isBookmarked(id)}

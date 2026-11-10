@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   ChevronLeft,
   MoreVertical,
@@ -154,7 +154,8 @@ interface CharacterProfileViewProps {
   activePersona?: Persona;
   currentUser: UserModel;
   isFollowingCreator: boolean;
-  onToggleFollow: (creatorId: string) => void;
+  onToggleFollow: (creatorId: string, creatorName?: string, avatarUrl?: string) => void;
+  onTagClick?: (tag: string) => void;
   isBookmarked: boolean;
   onToggleBookmark: (charId: string) => void;
   onToggleLike: (charId: string) => void;
@@ -174,6 +175,7 @@ export const CharacterProfileView: React.FC<CharacterProfileViewProps> = ({
   currentUser,
   isFollowingCreator,
   onToggleFollow,
+  onTagClick,
   isBookmarked,
   onToggleBookmark,
   onToggleLike,
@@ -184,8 +186,43 @@ export const CharacterProfileView: React.FC<CharacterProfileViewProps> = ({
   onForkCharacter
 }) => {
   const [activeTab, setActiveTab] = useState<ProfileTab>('about');
-  const [isFollowing, setIsFollowing] = useState(isFollowingCreator);
+  // Helper to extract authentic creator name across imported & native characters
+  const getCreatorHandle = useCallback(() => {
+    if (character.creatorUsername && character.creatorUsername.trim() && character.creatorUsername !== 'creator') {
+      return cleanCreatorHandle(character.creatorUsername);
+    }
+    if (character.creatorNotes) {
+      const match = character.creatorNotes.match(/@([a-zA-Z0-9_-]+)/);
+      if (match && match[1]) {
+        return cleanCreatorHandle(match[1]);
+      }
+    }
+    if (character.creatorId && character.creatorId !== 'default' && !character.creatorId.startsWith('user_')) {
+      return cleanCreatorHandle(character.creatorId);
+    }
+    return cleanCreatorHandle(character.creatorUsername || character.creatorId);
+  }, [character]);
+
+  const checkIsFollowing = useCallback(() => {
+    const handle = getCreatorHandle();
+    return (
+      storageService.isFollowingCreator(currentUser.id, handle) ||
+      (character.creatorId ? storageService.isFollowing(currentUser.id, character.creatorId) : false)
+    );
+  }, [currentUser.id, getCreatorHandle, character.creatorId]);
+
+  const [isFollowing, setIsFollowing] = useState(checkIsFollowing);
   const [showMenu, setShowMenu] = useState(false);
+
+  // Sync following status when prop updates or global follow event fires
+  useEffect(() => {
+    const syncFollow = () => {
+      setIsFollowing(checkIsFollowing());
+    };
+    syncFollow();
+    window.addEventListener('warden-follows-updated', syncFollow);
+    return () => window.removeEventListener('warden-follows-updated', syncFollow);
+  }, [checkIsFollowing, isFollowingCreator]);
 
   // Ensure view resets to the top when opening a character
   useEffect(() => {
@@ -518,7 +555,7 @@ export const CharacterProfileView: React.FC<CharacterProfileViewProps> = ({
                   onClick={() => onViewCreatorProfile(character.creatorId)}
                   className="text-neutral-200 font-medium hover:text-purple-300 transition-colors truncate max-w-[180px] sm:max-w-xs"
                 >
-                  @{cleanCreatorHandle(character.creatorUsername)}
+                  @{getCreatorHandle()}
                 </button>
                 <CheckCircle2 className="w-3.5 h-3.5 text-purple-400 shrink-0 fill-purple-400/20" />
               </div>
@@ -558,8 +595,9 @@ export const CharacterProfileView: React.FC<CharacterProfileViewProps> = ({
 
             <button
               onClick={() => {
+                const targetCreatorName = getCreatorHandle();
+                onToggleFollow(character.creatorId, targetCreatorName, character.creatorAvatar);
                 setIsFollowing(!isFollowing);
-                onToggleFollow(character.creatorId);
               }}
               className={`px-5 py-2 rounded-xl text-xs font-bold transition-all duration-180 flex items-center gap-1.5 cursor-pointer ${
                 isFollowing
@@ -623,12 +661,15 @@ export const CharacterProfileView: React.FC<CharacterProfileViewProps> = ({
         {/* Tag Chips Row */}
         <div className="flex flex-wrap items-center gap-2">
           {character.tagSlugs.map(slug => (
-            <span
+            <button
               key={slug}
-              className="text-xs bg-[#12151e] hover:bg-[#181c28] text-neutral-300 border border-[#1b1e28] px-3 py-1 rounded-md capitalize font-medium transition-colors"
+              type="button"
+              onClick={() => onTagClick?.(slug)}
+              className="text-xs bg-[#12151e] hover:bg-purple-950/40 hover:text-purple-300 hover:border-purple-500/40 text-neutral-300 border border-[#1b1e28] px-3 py-1 rounded-md capitalize font-medium transition-all cursor-pointer flex items-center gap-1"
+              title={`Click to search characters tagged with #${slug}`}
             >
-              {slug.replace(/-/g, ' ')}
-            </span>
+              <span>#{slug.replace(/-/g, ' ')}</span>
+            </button>
           ))}
         </div>
 
@@ -730,7 +771,7 @@ export const CharacterProfileView: React.FC<CharacterProfileViewProps> = ({
                   Creator
                 </span>
                 <p className="text-purple-400 font-semibold truncate">
-                  @{cleanCreatorHandle(character.creatorUsername) || 'astra'}
+                  @{getCreatorHandle()}
                 </p>
               </div>
 

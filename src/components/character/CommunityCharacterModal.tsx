@@ -44,6 +44,7 @@ interface CommunityCharacterModalProps {
   isFollowingCreator?: boolean;
   onToggleFollowCreator?: (creatorName: string, avatarUrl?: string) => void;
   onViewCreatorProfile?: (creatorName: string) => void;
+  onTagClick?: (tagName: string) => void;
 }
 
 export const CommunityCharacterModal: React.FC<CommunityCharacterModalProps> = ({
@@ -57,7 +58,8 @@ export const CommunityCharacterModal: React.FC<CommunityCharacterModalProps> = (
   blurNsfw,
   isFollowingCreator,
   onToggleFollowCreator,
-  onViewCreatorProfile
+  onViewCreatorProfile,
+  onTagClick
 }) => {
   const [detail, setDetail] = useState<CommunityCharacterDetail | null>(null);
   const [loading, setLoading] = useState(false);
@@ -443,14 +445,20 @@ export const CommunityCharacterModal: React.FC<CommunityCharacterModalProps> = (
             <>
               {/* Tags */}
               <div className="flex flex-wrap items-center gap-1.5">
-                {character.tags.map(tag => (
-                  <span
-                    key={tag.id || tag.slug}
-                    className="px-2.5 py-1 rounded-md bg-[#181c28] border border-[#222736] text-neutral-300 text-[11px] font-medium"
-                  >
-                    {tag.name.replace(/^[^\w\s]+/, '').trim()}
-                  </span>
-                ))}
+                {character.tags.map(tag => {
+                  const cleanName = tag.name.replace(/^[^\w\s]+/, '').trim();
+                  return (
+                    <button
+                      key={tag.id || tag.slug || tag.name}
+                      type="button"
+                      onClick={() => onTagClick?.(cleanName)}
+                      className="px-2.5 py-1 rounded-md bg-[#181c28] hover:bg-purple-950/40 hover:text-purple-300 hover:border-purple-500/40 border border-[#222736] text-neutral-300 text-[11px] font-medium transition-all cursor-pointer flex items-center gap-1"
+                      title={`Click to search characters tagged with #${cleanName}`}
+                    >
+                      <span>#{cleanName}</span>
+                    </button>
+                  );
+                })}
               </div>
 
               {/* Character Summary / Persona (Supports full HTML/Markdown images like Image 1) */}

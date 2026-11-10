@@ -173,7 +173,24 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
       setFollowedCreators(storageService.getFollowedCreators(currentUserId));
     };
     window.addEventListener('warden-follows-updated', refreshFollows);
-    return () => window.removeEventListener('warden-follows-updated', refreshFollows);
+
+    const handleSearchTagEvent = (e: any) => {
+      const tag = e.detail?.tag;
+      if (tag) {
+        setActiveTab('community');
+        setScopeMode('all');
+        setCommunitySelectedCategories(['all']);
+        setCommunitySearchInput(tag);
+        setCommunitySearch(tag);
+        setCurrentPage(1);
+      }
+    };
+    window.addEventListener('warden-search-tag', handleSearchTagEvent);
+
+    return () => {
+      window.removeEventListener('warden-follows-updated', refreshFollows);
+      window.removeEventListener('warden-search-tag', handleSearchTagEvent);
+    };
   }, [currentUserId]);
 
   const tagStripRef = useRef<HTMLDivElement>(null);
@@ -1227,57 +1244,119 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                   );
                 })}
               </div>
-            ) : communityLoading ? (
-              /* ── CHARACTERS LOADING SKELETON (2 columns on mobile) ── */
-              <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-5">
-                {Array.from({ length: 8 }).map((_, i) => (
-                  <div
-                    key={i}
-                    className="h-72 sm:h-96 rounded-2xl bg-[#12151e] border border-[#1b1e28] animate-pulse p-3 sm:p-4 flex flex-col justify-between"
-                  >
-                    <div className="h-32 sm:h-44 bg-[#1a1e2b] rounded-xl mb-2 sm:mb-3" />
-                    <div className="space-y-2 flex-1">
-                      <div className="h-3.5 w-3/4 bg-[#1a1e2b] rounded" />
-                      <div className="h-3 w-1/2 bg-[#1a1e2b] rounded" />
-                      <div className="h-8 bg-[#1a1e2b] rounded mt-2" />
-                    </div>
-                    <div className="h-7 bg-[#1a1e2b] rounded mt-2" />
-                  </div>
-                ))}
-              </div>
-            ) : communityCharacters.length === 0 ? (
-              <div className="py-20 text-center space-y-3 bg-[#12151e]/40 border border-[#1b1e28] rounded-2xl p-8">
-                <Sparkles className="w-8 h-8 text-neutral-500 mx-auto" />
-                <p className="text-sm font-semibold text-neutral-300">
-                  {scopeMode === 'following'
-                    ? 'You are not following any creators yet'
-                    : scopeMode === 'favorites'
-                    ? 'No favorite community characters saved yet'
-                    : 'No community characters found'}
-                </p>
-                <p className="text-xs text-neutral-500 max-w-md mx-auto">
-                  {scopeMode === 'following'
-                    ? 'Click "+ Follow" next to any @creator on a character card to see all their bots here and get notified when they upload new characters!'
-                    : scopeMode === 'favorites'
-                    ? 'Tap the bookmark icon on any community card to save it to your Favorites feed.'
-                    : 'Try another search query or select another category filter above.'}
-                </p>
-                <button
-                  onClick={() => {
-                    setScopeMode('all');
-                    setCommunitySearch('');
-                    setCommunitySearchInput('');
-                    setCommunitySelectedCategories(['all']);
-                    setCurrentPage(1);
-                  }}
-                  className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold rounded-xl transition-colors cursor-pointer"
-                >
-                  Browse All Characters
-                </button>
-              </div>
             ) : (
               <>
-                <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-5">
+                {/* Followed Creators Strip (when Following filter is selected) */}
+                {scopeMode === 'following' && followedCreators.length > 0 && (
+                  <div className="p-3 sm:p-4 rounded-2xl bg-[#14121d] border border-[#262235] space-y-2.5 mb-4 animate-fade-in">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <Users className="w-3.5 h-3.5 text-purple-400" />
+                        <span>Followed Creators</span>
+                        <span className="px-1.5 py-0.5 rounded-full bg-purple-950 text-purple-300 text-[10px] border border-purple-800/40">
+                          {followedCreators.length}
+                        </span>
+                      </span>
+                      <span className="text-[10px] text-neutral-500">Tap a creator to search their characters</span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {followedCreators.map(fc => (
+                        <div
+                          key={fc.creatorName}
+                          onClick={() => {
+                            setScopeMode('all');
+                            setCommunitySearchInput(fc.creatorName);
+                            setCommunitySearch(fc.creatorName);
+                            setCurrentPage(1);
+                          }}
+                          className="group flex items-center gap-2 pl-1.5 pr-2.5 py-1 rounded-full bg-[#1b1828] hover:bg-purple-950/60 border border-purple-500/30 hover:border-purple-400/60 transition-all cursor-pointer shadow-sm"
+                        >
+                          {fc.avatarUrl ? (
+                            <img
+                              src={fc.avatarUrl}
+                              alt={fc.creatorName}
+                              className="w-5 h-5 rounded-full object-cover border border-purple-400/40 shrink-0"
+                            />
+                          ) : (
+                            <div className="w-5 h-5 rounded-full bg-purple-900 text-[9px] font-bold text-white flex items-center justify-center shrink-0">
+                              {fc.creatorName.slice(0, 2).toUpperCase()}
+                            </div>
+                          )}
+                          <span className="text-xs font-semibold text-neutral-200 group-hover:text-white">
+                            @{fc.creatorName}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={e => {
+                              e.stopPropagation();
+                              handleToggleFollowCreator(fc.creatorName, fc.avatarUrl);
+                            }}
+                            className="text-neutral-500 hover:text-rose-400 text-xs ml-0.5 cursor-pointer"
+                            title={`Unfollow @${fc.creatorName}`}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {communityLoading ? (
+                  /* ── CHARACTERS LOADING SKELETON (2 columns on mobile) ── */
+                  <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-5">
+                    {Array.from({ length: 8 }).map((_, i) => (
+                      <div
+                        key={i}
+                        className="h-72 sm:h-96 rounded-2xl bg-[#12151e] border border-[#1b1e28] animate-pulse p-3 sm:p-4 flex flex-col justify-between"
+                      >
+                        <div className="h-32 sm:h-44 bg-[#1a1e2b] rounded-xl mb-2 sm:mb-3" />
+                        <div className="space-y-2 flex-1">
+                          <div className="h-3.5 w-3/4 bg-[#1a1e2b] rounded" />
+                          <div className="h-3 w-1/2 bg-[#1a1e2b] rounded" />
+                          <div className="h-8 bg-[#1a1e2b] rounded mt-2" />
+                        </div>
+                        <div className="h-7 bg-[#1a1e2b] rounded mt-2" />
+                      </div>
+                    ))}
+                  </div>
+                ) : communityCharacters.length === 0 ? (
+                  <div className="py-20 text-center space-y-3 bg-[#12151e]/40 border border-[#1b1e28] rounded-2xl p-8">
+                    <Sparkles className="w-8 h-8 text-neutral-500 mx-auto" />
+                    <p className="text-sm font-semibold text-neutral-300">
+                      {scopeMode === 'following'
+                        ? (followedCreators.length === 0
+                            ? 'You are not following any creators yet'
+                            : `Following ${followedCreators.length} creator${followedCreators.length > 1 ? 's' : ''}`)
+                        : scopeMode === 'favorites'
+                        ? 'No favorite community characters saved yet'
+                        : 'No community characters found'}
+                    </p>
+                    <p className="text-xs text-neutral-500 max-w-md mx-auto">
+                      {scopeMode === 'following'
+                        ? (followedCreators.length === 0
+                            ? 'Click "+ Follow" next to any @creator on a character card to see all their bots here and get notified when they upload new characters!'
+                            : `You are following @${followedCreators.map(f => f.creatorName).join(', @')}. Tap their name above to explore their characters.`)
+                        : scopeMode === 'favorites'
+                        ? 'Tap the bookmark icon on any community card to save it to your Favorites feed.'
+                        : 'Try another search query or select another category filter above.'}
+                    </p>
+                    <button
+                      onClick={() => {
+                        setScopeMode('all');
+                        setCommunitySearch('');
+                        setCommunitySearchInput('');
+                        setCommunitySelectedCategories(['all']);
+                        setCurrentPage(1);
+                      }}
+                      className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold rounded-xl transition-colors cursor-pointer"
+                    >
+                      Browse All Characters
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-5">
                   {communityCharacters.map(char => {
                     const isCreatorFollowed = followedCreators.some(
                       f => f.creatorName.toLowerCase() === (char.creatorName || '').toLowerCase()
@@ -1347,8 +1426,10 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                 )}
               </>
             )}
-          </div>
+          </>
         )}
+      </div>
+    )}
 
         {/* ══════════════════════════════════════════════════════════════════════ */}
         {/* TAB 2: MY LOCAL LIBRARY (Installed & Custom Characters) */}
@@ -1491,11 +1572,18 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
           selectedCommunityChar
             ? followedCreators.some(
                 f =>
-                  f.creatorName.toLowerCase() ===
-                  (selectedCommunityChar.creatorName || '').toLowerCase()
+                  f.creatorName.toLowerCase().replace(/^@+/, '').trim() ===
+                  (selectedCommunityChar.creatorName || '').toLowerCase().replace(/^@+/, '').trim()
               )
             : false
         }
+        onTagClick={tagName => {
+          setSelectedCommunityChar(null);
+          setScopeMode('all');
+          setCommunitySearchInput(tagName);
+          setCommunitySearch(tagName);
+          setCurrentPage(1);
+        }}
         onToggleFollowCreator={(creatorName, avatarUrl) =>
           handleToggleFollowCreator(creatorName, avatarUrl)
         }

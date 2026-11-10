@@ -14,7 +14,7 @@ import {
   ProviderConfig
 } from '../types';
 import { storageService } from './storageService';
-import { tokenOptimizerService } from './tokenOptimizerService';
+import { tokenOptimizerService, isOocMessage, cleanOocContent } from './tokenOptimizerService';
 
 export interface StreamCallbacks {
   onChunk: (chunk: string) => void;
@@ -66,27 +66,61 @@ export function extractThoughtAndContent(rawText: string, explicitThought?: stri
     }
   }
 
-  // 2. Monologue / Scratchpad extraction:
-  // e.g., starts with "Let me think...", "Thinking Process:", "I should write...", etc.
-  // Followed by transition: "Let me draft:", "Draft:", "---", or markdown narrative like *action* or "dialogue"
-  const draftSplitRegex = /\n(?:(?:Let me draft:?|Draft:?|Here is the response:?|Response:?|Final response:?)\s*(?:\n+---)?|\n+---\s*\n+)([\s\S]*)$/i;
-  const draftMatch = content.match(draftSplitRegex);
-  if (draftMatch && draftMatch[1]) {
-    const rawThought = content.substring(0, draftMatch.index).trim();
-    thought = (thought ? thought + '\n\n' : '') + rawThought;
-    content = draftMatch[1].trim();
+  // 2. Post-response critique / word count / evaluation stripping at the end FIRST
+  // e.g. "--- That's about 430 words. Good length... Let me double-check details: - 'Read-nothing!'..."
+  const trailingCritiqueRegex = /\n+(?:---+\s*)?\n*(?:(?:That's about \d+ words|Word count[:\s]|Let me double-check|Self-evaluation[:\s]|Evaluation[:\s]|Note[:\s]|Notes[:\s]|Double-check details[:\s]|I should make sure)[\s\S]*)$/i;
+  const trailingMatch = content.match(trailingCritiqueRegex);
+  if (trailingMatch) {
+    const rawTrailing = content.substring(trailingMatch.index!).trim();
+    thought = (thought ? thought + '\n\n[Post-Response Self-Critique]\n' : '') + rawTrailing;
+    content = content.substring(0, trailingMatch.index).trim();
+  }
+
+  // 3. Monologue / Scratchpad / Numbered Outline extraction:
+  // Models sometimes produce numbered planning steps (1. ..., 2. ...), followed by author reflections
+  // (e.g. "Actually, I shouldn't write..."), followed by the actual character dialogue/narrative.
+  if (/^\s*1\.\s+/.test(content)) {
+    const paragraphs = content.split(/\n\s*\n+/);
+    let storyStartIndex = -1;
+
+    for (let i = 0; i < paragraphs.length; i++) {
+      const p = paragraphs[i].trim();
+      const isNumbered = /^\d+\.\s+/.test(p);
+      const isMeta = /^(?:Actually|Let me|Draft|Here is|Now|So|I should|In this scene|Scene breakdown|Outline|Plan)\b/i.test(p);
+
+      if (!isNumbered && !isMeta) {
+        if (i > 0) {
+          storyStartIndex = i;
+          break;
+        }
+      }
+    }
+
+    if (storyStartIndex !== -1) {
+      const outlinePart = paragraphs.slice(0, storyStartIndex).join('\n\n').trim();
+      const storyPart = paragraphs.slice(storyStartIndex).join('\n\n').trim();
+      thought = outlinePart + (thought ? '\n\n' + thought : '');
+      content = storyPart;
+    }
   } else {
-    // Check if starts with obvious thinking monologue and then switches directly to character narrative (* or ")
-    const startMonologueRegex = /^(?:Let me think|Thinking Process|I should|According to the character card|Now, given the character card)[\s\S]+?(?=\n\n(?:\*|"))/i;
-    const monologueMatch = content.match(startMonologueRegex);
-    if (monologueMatch) {
-      const rawThought = monologueMatch[0].trim();
-      thought = (thought ? thought + '\n\n' : '') + rawThought;
-      content = content.substring(monologueMatch[0].length).trim();
+    const draftSplitRegex = /\n(?:(?:Let me draft:?|Draft:?|Here is the response:?|Response:?|Final response:?)\s*(?:\n+---)?)\s*\n+([\s\S]*)$/i;
+    const draftMatch = content.match(draftSplitRegex);
+    if (draftMatch && draftMatch[1]) {
+      const rawThought = content.substring(0, draftMatch.index).trim();
+      thought = (thought ? rawThought + '\n\n' + thought : rawThought);
+      content = draftMatch[1].trim();
+    } else {
+      const startMonologueRegex = /^(?:Let me think|Thinking Process|I should|According to the character card|Now, given the character card)[\s\S]+?(?=\n\n(?:\*|"))/i;
+      const monologueMatch = content.match(startMonologueRegex);
+      if (monologueMatch) {
+        const rawThought = monologueMatch[0].trim();
+        thought = (thought ? rawThought + '\n\n' + thought : rawThought);
+        content = content.substring(monologueMatch[0].length).trim();
+      }
     }
   }
 
-  // 3. If content was purely thinking (no actual dialogue produced before token cutoff)
+  // 4. If content was purely thinking (no actual dialogue produced before token cutoff)
   if (!content && thought) {
     // Rescue any draft or narrative that started inside the thought block before cutoff
     const draftSearch = thought.match(/(?:Let me draft:?|Draft:?|Response:?|Final response:?)\s*(?:\n+---)?\s*\n+([\s\S]+)$/i);
@@ -183,16 +217,25 @@ export function extractCleanCharacterName(
     return dashEnd[1].trim();
   }
 
-  // 8. If title is a scenario phrase / sentence (e.g. "he want to win bet", "roommate catches you")
-  // Infer character's authentic name from personality or firstMessage
-  if (/^[a-z0-9\s,.'!?-]+$/.test(raw) || /^(?:he|she|i|my|they|you|we)\s+/i.test(raw) || raw.split(/\s+/).length >= 4) {
+  // 8. Trope / Role title detection (e.g. "Netorare Mom", "Childhood Friend", "Yandere Sister", "Mom's Friend")
+  // Check if personality, description, or first message declares the character's real name (e.g. Velicia)
+  const isTropeOrRole =
+    /^(?:Netorare|NTR|Mom|Mother|Wife|Sister|Aunt|Milf|Friend|Best Friend|Childhood Friend|Classmate|Roommate|Bully|Teacher|Sensei|Boss|Maid|Slave|Goddess|Princess|Queen|Yandere|Tsundere|Kuudere|Femboy|Tomboy|Step-mom|Stepmother|Step-sister|Stepsister|Coworker|Neighbor|Doctor|Nurse|Barista|Girlfriend|Boyfriend)(?:[ \t]+(?:Mom|Mother|Wife|Sister|Friend|Girlfriend|Boyfriend|Girl|Boy|Woman|Man|Lady|Maid|Boss))?$/i.test(raw);
+
+  if (isTropeOrRole || /^[a-z0-9\s,.'!?-]+$/.test(raw) || /^(?:he|she|i|my|they|you|we)\s+/i.test(raw) || raw.split(/\s+/).length >= 4) {
     const combined = `${personality || ''}\n${firstMessage || ''}`;
     const nameMatch =
-      combined.match(/(?:You are|Character:|Name:|\{\{char\}\} is)\s+([A-Z][a-zA-Z0-9'’_-]+(?:\s+[A-Z][a-zA-Z0-9'’_-]+)?)/i) ||
-      combined.match(/\b([A-Z][a-z]{2,15}(?:\s+[A-Z][a-z]{2,15})?)\s+(?:has stopped|smiles|looks|glares|observes|stands|walks|steps|sighs|chuckles|grins|laughs|watches|leans|crosses|sits|speaks|whispers|taps|nods|turns)\b/) ||
+      combined.match(/(?:(?:Name|Full Name|Real Name|Nama|Character)\s*[:=][ \t]*([A-Za-z0-9'’_-]+(?:[ \t]+[A-Za-z0-9'’_-]+)?))/i) ||
+      combined.match(/\[(?:Character|char)\s*\(\s*["']?([A-Za-z0-9'’_-]+(?:[ \t]+[A-Za-z0-9'’_-]+)?)/i) ||
+      combined.match(/(?:You are|Character:|Name:|\{\{char\}\} is|\{\{char\}\}'s name is|Her name is|His name is)[ \t]+([A-Z][a-zA-Z0-9'’_-]+(?:[ \t]+[A-Z][a-zA-Z0-9'’_-]+)?)/i) ||
+      combined.match(/\b([A-Z][a-z]{2,15})[ \t]*\(\s*\d{1,2}\s*(?:yo|years old)?\s*\)/i) ||
+      combined.match(/\b([A-Z][a-z]{2,15}(?:[ \t]+[A-Z][a-z]{2,15})?)[ \t]+(?:has stopped|smiles|looks|glares|observes|stands|walks|steps|sighs|chuckles|grins|laughs|watches|leans|crosses|sits|speaks|whispers|taps|nods|turns)\b/) ||
       combined.match(/\b([A-Z][a-z]{2,15})'s\b/);
     if (nameMatch && nameMatch[1]) {
-      return nameMatch[1].trim();
+      const candidate = nameMatch[1].trim();
+      if (!/^(?:User|You|Character|Narrator|Roleplay|Story|Scenario)$/i.test(candidate)) {
+        return candidate;
+      }
     }
   }
 
@@ -455,15 +498,40 @@ class AIProviderService {
     }
 
     const userName = persona?.name || 'User';
-    sections.push(`[FORMATTING GUIDELINES]
+
+    const realUserMsgs = conversation.messages.filter(
+      m => (m.sender === 'user' || m.senderRole === 'user') && m.id !== 'msg_continue_prompt'
+    );
+    const lastUserMsg = realUserMsgs[realUserMsgs.length - 1];
+    const isOoc = isOocMessage(lastUserMsg?.content);
+
+    if (isOoc) {
+      const cleanQ = cleanOocContent(lastUserMsg?.content) || lastUserMsg?.content || 'General meta-question';
+      sections.push(`[ACTIVE MODE: OUT-OF-CHARACTER (OOC) DISCUSSION]
+The user is asking an Out-Of-Character (OOC) meta-question about the character card, story lore, writing quality, or roleplay dynamic:
+"${cleanQ}"
+
+DIRECTIVES FOR THIS RESPONSE:
+- Begin response immediately with "[OOC]" followed by your direct answer.
+- Do NOT output conversational preambles, greetings, or meta-labels (such as "Certainly!", "Sure", "Regarding your question", or "[OOC Assistant]:").
+- Temporarily step outside of the roleplay persona and character identity.
+- Do NOT speak in-character as ${chatCharName}. Do NOT use roleplay asterisks (*actions*) or character dialogue quotes.
+- Respond directly, candidly, and objectively as an expert AI co-writer, lorekeeper, and character critic.
+- You have full access to the character's background, personality, system instructions, and chat history above. Use this context to answer the user's question with thoughtful, unbiased analysis.`);
+    } else {
+      sections.push(`[FORMATTING GUIDELINES]
 - Maintain immersion. Never break character or refer to yourself as an AI.
 - IMMEDIATELY begin your response in-character with physical actions or dialogue.
 - NEVER output internal reasoning, chain-of-thought, drafting steps, or meta-commentary (such as "Let me think...", "Plan:", or "Let me draft:") in your final output.
+- NEVER include numbered outline breakdowns (e.g. '1. Reaction...', '2. The realization...'), word count evaluations (e.g. 'That's about 430 words...'), or post-response self-critiques in your text. Output ONLY the story itself.
 - For reasoning models (GLM, DeepSeek): Keep any internal deliberation strictly under 200 tokens and dedicate your generation budget to writing vivid roleplay dialogue and narrative.
 - Always refer to the user by their persona name ("${userName}") and yourself as "${chatCharName}". Never output raw placeholders like {{user}}, [[user]], {{char}}, or [[char]].
 - Format physical micro-actions, gestures, tone, and environment in italics (*action*).
 - Put spoken words in double quotes ("spoken dialogue").
+- Never speak, act, or decide for ${userName} (strictly avoid godmoding).
+- Naturally understand informal slang, humor, and metaphors (e.g., "otak 1 core", teasing, casual banter) without taking them literally or breaking character.
 - Respond with creative detail, emotional realism, and narrative pacing.`);
+    }
 
     return this.stripImagesForAI(
       sections
@@ -488,6 +556,28 @@ class AIProviderService {
     );
     const lastUserMsg = realUserMsgs[realUserMsgs.length - 1]?.content || 'Hello';
     const userRole = persona ? persona.name.split(' ')[0] : 'Traveler';
+
+    // Out-of-Character (OOC) Meta-inquiry response
+    if (isOocMessage(lastUserMsg)) {
+      const cleanQ = cleanOocContent(lastUserMsg) || lastUserMsg;
+      const simOoc = `[OOC]
+Karakter **${character.name}** memiliki persona: *${character.personality || 'standar'}*.
+${character.background ? `\nLatar belakang: ${character.background.slice(0, 200)}...` : ''}
+
+Analisis: Kartu karakter ini dirancang dengan gaya penulisan spesifik. Jika karakter terasa repetitif dalam obrolan panjang, hal ini umumnya disebabkan oleh pergeseran konteks (context drift) pada riwayat chat.`;
+
+      const words = simOoc.split(' ');
+      let accumulated = '';
+      for (let i = 0; i < words.length; i++) {
+        if (signal.aborted) return;
+        const piece = (i === 0 ? '' : ' ') + words[i];
+        accumulated += piece;
+        callbacks.onChunk(accumulated);
+        await new Promise(r => setTimeout(r, 20));
+      }
+      callbacks.onComplete(accumulated, Math.round(accumulated.length / 4));
+      return;
+    }
 
     // Tailored in-character simulated dialogues based on character archetype
     let responseTemplates: string[] = [];

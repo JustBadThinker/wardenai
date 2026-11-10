@@ -185,7 +185,7 @@ export const KOKORO_VOICES: KokoroVoiceProfile[] = [
 export interface TtsConfig {
   enabled: boolean;
   autoPlay: boolean;
-  engine: 'browser' | 'kokoro-endpoint';
+  engine: 'kokoro-local' | 'browser' | 'kokoro-endpoint';
   kokoroEndpoint: string;
   voiceId: string;
   pitch: number; // 0.5 to 1.5 (default 1.0)
@@ -196,7 +196,7 @@ export interface TtsConfig {
 export const DEFAULT_TTS_CONFIG: TtsConfig = {
   enabled: false,
   autoPlay: false,
-  engine: 'browser',
+  engine: 'kokoro-local',
   kokoroEndpoint: 'http://localhost:8880/v1/audio/speech',
   voiceId: 'af_heart',
   pitch: 1.0,
@@ -204,18 +204,253 @@ export const DEFAULT_TTS_CONFIG: TtsConfig = {
   dialogueOnly: true
 };
 
+export type KokoroModelStatus = 'idle' | 'downloading' | 'ready' | 'error';
+
+export interface KokoroProgressState {
+  status: KokoroModelStatus;
+  progress: number; // 0 to 100
+  text: string;
+  error?: string;
+}
+
+export interface TtsPlaybackState {
+  isSpeaking: boolean;
+  isSynthesizing: boolean;
+  synthesizingMessageId: string | null;
+  synthesizingPercent: number; // 0 to 100%
+  currentChunk: number;
+  totalChunks: number;
+  playingChunk: number;
+  currentMessageId: string | null;
+  kokoroProgress: KokoroProgressState;
+}
+
 const STORAGE_KEY = 'warden_tts_settings';
+const KOKORO_DOWNLOADED_KEY = 'warden_kokoro_model_cached';
 
 export class TtsService {
   private config: TtsConfig = { ...DEFAULT_TTS_CONFIG };
   private activeAudio: HTMLAudioElement | null = null;
   private isSpeaking = false;
+  private isSynthesizing = false;
+  private synthesizingMessageId: string | null = null;
+  private synthesizingPercent = 0;
+  private currentChunk = 0;
+  private totalChunks = 0;
+  private playingChunk = 0;
+  private activeJobId = 0;
   private currentMessageId: string | null = null;
+  private playbackQueue: string[] = [];
+  private isPlayingQueue = false;
+  private activePlaybackSpeed = 1.0;
   private audioCache = new Map<string, string>();
-  private listeners = new Set<(state: { isSpeaking: boolean; currentMessageId: string | null }) => void>();
+  private chunkCache = new Map<string, string[]>();
+  private pendingChunks = new Map<string, string[]>();
+  private listeners = new Set<(state: TtsPlaybackState) => void>();
+
+  // Background Web Worker for non-blocking neural TTS inference
+  private worker: Worker | null = null;
+  private kokoroProgress: KokoroProgressState = {
+    status: 'idle',
+    progress: 0,
+    text: ''
+  };
+
+  // Pending synthesize resolver
+  private pendingSynthesizeResolve: ((blobUrl: string) => void) | null = null;
+  private pendingSynthesizeReject: ((err: Error) => void) | null = null;
+  private queuedSpeak: { text: string; messageId?: string; config?: Partial<TtsConfig> } | null = null;
+
+  // Chromium GC Guard for Web Speech API
+  private activeUtterance: SpeechSynthesisUtterance | null = null;
+  private browserVoices: SpeechSynthesisVoice[] = [];
 
   constructor() {
     this.loadConfig();
+    this.initBrowserVoices();
+    this.checkIfModelPreviouslyDownloaded();
+  }
+
+  private initBrowserVoices() {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      const load = () => {
+        try {
+          this.browserVoices = window.speechSynthesis.getVoices() || [];
+        } catch {}
+      };
+      load();
+      if (window.speechSynthesis.onvoiceschanged !== undefined) {
+        window.speechSynthesis.onvoiceschanged = load;
+      }
+    }
+  }
+
+  private getWorker(): Worker {
+    if (!this.worker) {
+      this.worker = new Worker(new URL('../workers/kokoroWorker.ts', import.meta.url), {
+        type: 'module'
+      });
+
+      this.worker.onmessage = (e: MessageEvent) => {
+        const { type, status, progress, text, error, messageId, jobId } = e.data || {};
+
+        if (type === 'PROGRESS') {
+          this.kokoroProgress = {
+            status: status || 'downloading',
+            progress: progress || 0,
+            text: text || ''
+          };
+          this.notify();
+          return;
+        } else if (type === 'MODEL_READY') {
+          this.kokoroProgress = {
+            status: 'ready',
+            progress: 100,
+            text: 'Kokoro-82M model ready & active'
+          };
+          if (typeof window !== 'undefined') {
+            localStorage.setItem(KOKORO_DOWNLOADED_KEY, 'true');
+          }
+          this.notify();
+
+          if (this.queuedSpeak) {
+            const { text, messageId, config } = this.queuedSpeak;
+            this.queuedSpeak = null;
+            this.speak(text, messageId, config);
+          }
+          return;
+        } else if (type === 'ERROR') {
+          this.kokoroProgress = {
+            status: 'error',
+            progress: 0,
+            text: 'Kokoro model download failed',
+            error: error || 'Network or initialization error'
+          };
+          this.queuedSpeak = null;
+          this.isSynthesizing = false;
+          this.synthesizingMessageId = null;
+          this.notify();
+          return;
+        }
+
+        // Job check: ignore messages from old cancelled jobs
+        if (jobId !== undefined && jobId !== this.activeJobId) {
+          return;
+        }
+
+        if (type === 'STOPPED') {
+          return;
+        }
+
+        if (type === 'GENERATING') {
+          if (!this.isSynthesizing || jobId !== this.activeJobId) return;
+          this.synthesizingMessageId = messageId || null;
+          this.currentChunk = e.data?.currentChunk || 1;
+          this.totalChunks = e.data?.totalChunks || 1;
+          this.synthesizingPercent = e.data?.percent || 0;
+          this.notify();
+        } else if (type === 'GENERATING_PROGRESS') {
+          if (!this.isSynthesizing || jobId !== this.activeJobId) return;
+          this.synthesizingMessageId = messageId || null;
+          this.currentChunk = e.data?.currentChunk || 1;
+          this.totalChunks = e.data?.totalChunks || 1;
+          this.synthesizingPercent = e.data?.percent || 0;
+          this.notify();
+        } else if (type === 'CHUNK_AUDIO') {
+          if (!this.isSynthesizing || jobId !== this.activeJobId) return;
+          this.synthesizingMessageId = messageId || null;
+          this.currentChunk = e.data?.currentChunk || 1;
+          this.totalChunks = e.data?.totalChunks || 1;
+          this.synthesizingPercent = 100;
+
+          let chunkBlobUrl = '';
+          if (e.data?.blob) {
+            chunkBlobUrl = URL.createObjectURL(e.data.blob);
+          } else if (e.data?.buffer) {
+            const wavBlob = new Blob([e.data.buffer], { type: 'audio/wav' });
+            chunkBlobUrl = URL.createObjectURL(wavBlob);
+          }
+
+          if (chunkBlobUrl) {
+            const cacheKey = e.data?.cacheKey || messageId || 'active';
+            if (!this.pendingChunks.has(cacheKey)) {
+              this.pendingChunks.set(cacheKey, []);
+            }
+            this.pendingChunks.get(cacheKey)!.push(chunkBlobUrl);
+
+            this.playbackQueue.push(chunkBlobUrl);
+            if (!this.isPlayingQueue) {
+              this.currentMessageId = messageId || null;
+              this.playNextChunk(jobId);
+            }
+          }
+          this.notify();
+        } else if (type === 'AUDIO_READY') {
+          if (jobId !== this.activeJobId) return;
+          this.isSynthesizing = false;
+          this.synthesizingMessageId = null;
+
+          const cacheKey = e.data?.cacheKey || messageId || 'active';
+          const collected = this.pendingChunks.get(cacheKey);
+          if (collected && collected.length > 0) {
+            this.chunkCache.set(cacheKey, [...collected]);
+            this.pendingChunks.delete(cacheKey);
+          }
+
+          if (this.pendingSynthesizeResolve) {
+            this.pendingSynthesizeResolve('ready');
+            this.pendingSynthesizeResolve = null;
+            this.pendingSynthesizeReject = null;
+          }
+          if (!this.isPlayingQueue && this.playbackQueue.length === 0) {
+            this.isSpeaking = false;
+            this.currentMessageId = null;
+            this.currentChunk = 0;
+            this.totalChunks = 0;
+            this.playingChunk = 0;
+          }
+          this.notify();
+        } else if (type === 'GENERATE_ERROR') {
+          if (jobId !== this.activeJobId) return;
+          this.isSynthesizing = false;
+          this.synthesizingMessageId = null;
+          this.synthesizingPercent = 0;
+          this.currentChunk = 0;
+          this.totalChunks = 0;
+          this.queuedSpeak = null;
+          if (this.pendingSynthesizeReject) {
+            this.pendingSynthesizeReject(new Error(error || 'Kokoro speech synthesis failed'));
+            this.pendingSynthesizeResolve = null;
+            this.pendingSynthesizeReject = null;
+          }
+          this.notify();
+        }
+      };
+
+      this.worker.onerror = (err) => {
+        console.error('[TtsService Worker Error]', err);
+        this.isSynthesizing = false;
+        this.synthesizingMessageId = null;
+        if (this.pendingSynthesizeReject) {
+          this.pendingSynthesizeReject(new Error('Worker crashed or unavailable'));
+          this.pendingSynthesizeResolve = null;
+          this.pendingSynthesizeReject = null;
+        }
+        this.notify();
+      };
+    }
+    return this.worker;
+  }
+
+  private checkIfModelPreviouslyDownloaded() {
+    if (typeof window === 'undefined') return;
+    try {
+      const wasDownloaded = localStorage.getItem(KOKORO_DOWNLOADED_KEY) === 'true';
+      if (wasDownloaded) {
+        // Auto-load in background thread without freezing UI
+        this.loadKokoroModel(true).catch(() => {});
+      }
+    } catch {}
   }
 
   public loadConfig(): TtsConfig {
@@ -236,9 +471,7 @@ export class TtsService {
     if (typeof window !== 'undefined') {
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(this.config));
-      } catch {
-        // Ignore storage errors
-      }
+      } catch {}
     }
     return this.config;
   }
@@ -247,84 +480,299 @@ export class TtsService {
     return { ...this.config };
   }
 
-  public subscribe(cb: (state: { isSpeaking: boolean; currentMessageId: string | null }) => void): () => void {
+  public getKokoroProgress(): KokoroProgressState {
+    return { ...this.kokoroProgress };
+  }
+
+  public isKokoroReady(): boolean {
+    return this.kokoroProgress.status === 'ready';
+  }
+
+  public subscribe(cb: (state: TtsPlaybackState) => void): () => void {
     this.listeners.add(cb);
     return () => this.listeners.delete(cb);
   }
 
   private notify() {
-    this.listeners.forEach(cb => cb({ isSpeaking: this.isSpeaking, currentMessageId: this.currentMessageId }));
+    const state: TtsPlaybackState = {
+      isSpeaking: this.isSpeaking,
+      isSynthesizing: this.isSynthesizing,
+      synthesizingMessageId: this.synthesizingMessageId,
+      synthesizingPercent: this.synthesizingPercent,
+      currentChunk: this.currentChunk,
+      totalChunks: this.totalChunks,
+      playingChunk: this.playingChunk,
+      currentMessageId: this.currentMessageId,
+      kokoroProgress: { ...this.kokoroProgress }
+    };
+    this.listeners.forEach(cb => cb(state));
+  }
+
+  private playNextChunk(expectedJobId?: number): void {
+    if (expectedJobId !== undefined && expectedJobId !== this.activeJobId) {
+      return;
+    }
+
+    const thisJobId = this.activeJobId;
+
+    if (this.playbackQueue.length === 0) {
+      this.isPlayingQueue = false;
+      if (!this.isSynthesizing) {
+        this.isSpeaking = false;
+        this.currentMessageId = null;
+        this.currentChunk = 0;
+        this.totalChunks = 0;
+        this.playingChunk = 0;
+        this.notify();
+      }
+      return;
+    }
+
+    // Safely detach & stop previous audio instance so its events never fire
+    if (this.activeAudio) {
+      const prevAudio = this.activeAudio;
+      this.activeAudio = null;
+      prevAudio.onended = null;
+      prevAudio.onerror = null;
+      try {
+        prevAudio.pause();
+        prevAudio.currentTime = 0;
+        prevAudio.src = '';
+      } catch {}
+    }
+
+    this.isPlayingQueue = true;
+    this.isSpeaking = true;
+    this.playingChunk++;
+    this.notify();
+
+    const chunkUrl = this.playbackQueue.shift()!;
+    const audio = new Audio(chunkUrl);
+    this.activeAudio = audio;
+    audio.playbackRate = this.activePlaybackSpeed;
+
+    audio.onended = () => {
+      if (this.activeJobId !== thisJobId || this.activeAudio !== audio) {
+        return;
+      }
+      audio.onended = null;
+      audio.onerror = null;
+      this.playNextChunk(thisJobId);
+    };
+
+    audio.onerror = (e) => {
+      if (this.activeJobId !== thisJobId || this.activeAudio !== audio) {
+        return;
+      }
+      audio.onended = null;
+      audio.onerror = null;
+      console.warn('[TtsService] Chunk audio playback error, skipping to next chunk', e);
+      this.playNextChunk(thisJobId);
+    };
+
+    audio.play().catch(err => {
+      // AbortError occurs intentionally when stopped/paused: ignore completely and do NOT advance chunk
+      if (err?.name === 'AbortError' || this.activeJobId !== thisJobId || this.activeAudio !== audio) {
+        return;
+      }
+      console.warn('[TtsService] Audio play rejected:', err);
+      if (this.activeAudio === audio) {
+        audio.onended = null;
+        audio.onerror = null;
+        this.playNextChunk(thisJobId);
+      }
+    });
+  }
+
+  /**
+   * Downloads and auto-wires the Kokoro-82M neural model inside a background Web Worker.
+   * Keeps main UI at 60 FPS without freezing!
+   */
+  public async loadKokoroModel(silent = false): Promise<boolean> {
+    if (this.kokoroProgress.status === 'ready') {
+      return true;
+    }
+
+    if (this.kokoroProgress.status === 'downloading') {
+      return false;
+    }
+
+    this.kokoroProgress = {
+      status: 'downloading',
+      progress: 0,
+      text: silent ? 'Loading cached Kokoro engine...' : 'Initializing Kokoro-82M background worker...'
+    };
+    this.notify();
+
+    try {
+      const worker = this.getWorker();
+      worker.postMessage({ type: 'LOAD_MODEL' });
+      return true;
+    } catch (err: any) {
+      console.error('[TtsService] Failed to spawn Kokoro worker:', err);
+      this.kokoroProgress = {
+        status: 'error',
+        progress: 0,
+        text: 'Failed to start Kokoro worker',
+        error: err?.message
+      };
+      this.notify();
+      return false;
+    }
+  }
+
+  /**
+   * Helper to trigger direct browser download of the model weights to the user's Downloads/Warden folder
+   */
+  public downloadModelDirectlyToFolder(): void {
+    if (typeof window === 'undefined') return;
+    const modelUrl = 'https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/onnx/model_q8.onnx?download=true';
+    const link = document.createElement('a');
+    link.href = modelUrl;
+    link.download = 'Warden_Kokoro_model_q8.onnx';
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
+  /**
+   * Smart Quote Chunk Extractor for Roleplay:
+   * Extracts each spoken dialogue quote as an individual chunk.
+   * If there are 5 quotes -> 5 chunks (1/5, 2/5, 3/5, 4/5, 5/5).
+   * If there is 1 quote with multiple sentences -> splits into sentences.
+   * Discards actions/thoughts enclosed in asterisks *...* or _..._.
+   */
+  public extractSpokenDialogueChunks(text: string, dialogueOnly = true): string[] {
+    if (!text) return [];
+
+    // First normalize bold-wrapped quotes: **"..."** -> "..."
+    const normalized = text
+      .replace(/\*\*(["“「][^"”」]+["”」])\*\*/g, '$1')
+      .replace(/(["“「])\*\*([^*]+)\*\*(["”」])/g, '$1$2$3');
+
+    if (dialogueOnly) {
+      // 1. Strip narrative/action blocks enclosed in asterisks *...* or _..._
+      // so quotes inside actions (e.g. *she pivoted from "sprint" to "stroll"*) are discarded
+      const nonNarrativeText = normalized
+        .replace(/\*[^*]+\*/g, ' ')
+        .replace(/_[^_]+_/g, ' ');
+
+      const quoteRegex = /["“「]([^"”」]+)["”」]/g;
+      const rawQuotes: string[] = [];
+      let match: RegExpExecArray | null;
+
+      while ((match = quoteRegex.exec(nonNarrativeText)) !== null) {
+        const cleaned = match[1].replace(/[*_#`~[\]]/g, '').trim();
+        if (cleaned.length > 0 && /[a-zA-Z0-9\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/.test(cleaned)) {
+          rawQuotes.push(cleaned);
+        }
+      }
+
+      if (rawQuotes.length > 0) {
+        // Break any exceptionally long monologue (> 160 chars) into natural sentences
+        // so playback can start immediately on Chunk 1 while subsequent chunks synthesize in the background.
+        // Otherwise, each spoken quote is preserved as its own distinct chunk (e.g. 1/3, 2/3, 3/3).
+        const chunks: string[] = [];
+        for (const q of rawQuotes) {
+          if (q.length > 160 && /[.!?…]\s+/.test(q)) {
+            const subSentences = q.split(/(?<=[.!?…])\s+/).map(s => s.trim()).filter(s => s.length > 0);
+            chunks.push(...subSentences);
+          } else {
+            chunks.push(q);
+          }
+        }
+        return chunks.length > 0 ? chunks : rawQuotes;
+      }
+    }
+
+    // Fallback: If no spoken quotes outside narration exist (e.g. pure narrative)
+    let stripped = normalized
+      .replace(/[*_#`~[\]]/g, ' ')
+      .replace(/```[\s\S]*?```/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (!stripped) return [];
+
+    const rawSentences = stripped
+      .split(/(?<=[.!?…])\s+/)
+      .map(s => s.trim())
+      .filter(s => s.length > 0 && /[a-zA-Z0-9\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/.test(s));
+
+    return rawSentences.length > 0 ? rawSentences : [stripped];
   }
 
   /**
    * Smart Quote Extractor for Roleplay:
    * Extracts only spoken dialogue enclosed in quotation marks: "..." or “...” or 「...」
-   * If dialogueOnly is true and quotations exist, discards asterisk actions (*smiles*) and descriptions.
-   * If no quotations exist, cleanly strips markdown and delivers cleaned message.
+   * Explicitly discards actions and internal thoughts enclosed in asterisks *...* or _..._
+   * so quotes within narration (e.g. *she shifted from "sprint" to "stroll"*) are never spoken.
    */
   public extractSpokenDialogue(text: string, dialogueOnly = true): string {
-    if (!text) return '';
-
-    if (dialogueOnly) {
-      // Match all standard and typographic quotes: "...", “...”, 「...」
-      const quoteRegex = /["“「]([^"”」]+)["”」]/g;
-      const quotes: string[] = [];
-      let match: RegExpExecArray | null;
-
-      while ((match = quoteRegex.exec(text)) !== null) {
-        const cleaned = match[1].replace(/[*_#`~[\]]/g, '').trim();
-        if (cleaned.length > 0) {
-          quotes.push(cleaned);
-        }
-      }
-
-      if (quotes.length > 0) {
-        return quotes.join(' ');
-      }
-    }
-
-    // Fallback if no quotes found or dialogueOnly is disabled:
-    // Strip asterisk roleplay actions (*sighs deeply*, *looks down*)
-    let stripped = text.replace(/\*[^*]+\*/g, ' ');
-    // Strip bracket instructions or system prompts like [Date: ...]
-    stripped = stripped.replace(/\[[^\]]+\]/g, ' ');
-    // Strip code blocks and markdown artifacts
-    stripped = stripped.replace(/```[\s\S]*?```/g, ' ');
-    stripped = stripped.replace(/[`_#~]/g, ' ');
-    // Normalize excess whitespace
-    return stripped.replace(/\s+/g, ' ').trim();
+    const chunks = this.extractSpokenDialogueChunks(text, dialogueOnly);
+    return chunks.join(' ');
   }
 
   /**
-   * Stop any current speech playback immediately
+   * Stop any current speech playback immediately and kill worker tasks
    */
   public stop(): void {
+    this.activeJobId++;
+    if (this.worker) {
+      try {
+        this.worker.postMessage({ type: 'STOP' });
+      } catch {}
+    }
+    this.queuedSpeak = null;
+    this.playbackQueue = [];
+    this.isPlayingQueue = false;
+    this.synthesizingPercent = 0;
+    this.currentChunk = 0;
+    this.totalChunks = 0;
+    this.playingChunk = 0;
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       try {
         window.speechSynthesis.cancel();
       } catch {}
     }
+    this.activeUtterance = null;
+
     if (this.activeAudio) {
-      try {
-        this.activeAudio.pause();
-        this.activeAudio.currentTime = 0;
-      } catch {}
+      const oldAudio = this.activeAudio;
       this.activeAudio = null;
+      oldAudio.onended = null;
+      oldAudio.onerror = null;
+      try {
+        oldAudio.pause();
+        oldAudio.currentTime = 0;
+        oldAudio.src = '';
+      } catch {}
     }
     this.isSpeaking = false;
+    this.isSynthesizing = false;
+    this.synthesizingMessageId = null;
     this.currentMessageId = null;
     this.notify();
   }
 
-  public getPlaybackState(): { isSpeaking: boolean; currentMessageId: string | null } {
+  public getPlaybackState(): TtsPlaybackState {
     return {
       isSpeaking: this.isSpeaking,
-      currentMessageId: this.currentMessageId
+      isSynthesizing: this.isSynthesizing,
+      synthesizingMessageId: this.synthesizingMessageId,
+      synthesizingPercent: this.synthesizingPercent,
+      currentChunk: this.currentChunk,
+      totalChunks: this.totalChunks,
+      playingChunk: this.playingChunk,
+      currentMessageId: this.currentMessageId,
+      kokoroProgress: { ...this.kokoroProgress }
     };
   }
 
   /**
-   * Plays speech for a given text turn, respecting active voice profile, pitch, and speed.
+   * Plays speech for a given text turn with non-blocking Web Worker Kokoro generation.
    */
   public async speak(
     rawText: string,
@@ -332,29 +780,102 @@ export class TtsService {
     overrideConfig?: Partial<TtsConfig>
   ): Promise<void> {
     const opts = { ...this.config, ...overrideConfig };
-    const spokenText = this.extractSpokenDialogue(rawText, opts.dialogueOnly);
+    this.activePlaybackSpeed = opts.speed || 1.0;
+    const chunks = this.extractSpokenDialogueChunks(rawText, opts.dialogueOnly);
+    const spokenText = chunks.join(' ');
 
-    if (!spokenText || spokenText.length < 1) {
+    if (!chunks || chunks.length === 0 || !spokenText.trim()) {
       return;
     }
 
-    // If already playing this message, clicking again toggles stop
-    if (this.isSpeaking && this.currentMessageId === messageId) {
+    // If currently speaking or synthesizing this exact message, toggle stop
+    if ((this.isSpeaking || this.isSynthesizing) && (this.currentMessageId === messageId || this.synthesizingMessageId === messageId)) {
       this.stop();
       return;
     }
 
     this.stop();
-    this.isSpeaking = true;
-    this.currentMessageId = messageId || null;
-    this.notify();
 
     const selectedProfile = KOKORO_VOICES.find(v => v.id === opts.voiceId) || KOKORO_VOICES[0];
+    const cacheKey = `${messageId || spokenText}_${opts.voiceId}_${opts.speed}`;
 
-    // Mode 1: Kokoro Endpoint (OpenAI TTS format compatible: POST /v1/audio/speech)
-    if (opts.engine === 'kokoro-endpoint' && opts.kokoroEndpoint) {
+    // Priority 1: In-Browser Kokoro Neural Engine via Background Worker
+    if (opts.engine === 'kokoro-local' || !opts.engine) {
+      // Check cache first! If previously synthesized for this message & voice, replay immediately without compiling!
+      const cachedChunks = this.chunkCache.get(cacheKey);
+      if (cachedChunks && cachedChunks.length > 0) {
+        this.activeJobId++;
+        const thisJobId = this.activeJobId;
+        this.isSpeaking = true;
+        this.currentMessageId = messageId || null;
+        this.currentChunk = 0;
+        this.totalChunks = cachedChunks.length;
+        this.playingChunk = 0;
+        this.synthesizingPercent = 0;
+        this.isSynthesizing = false;
+        this.synthesizingMessageId = null;
+        this.playbackQueue = [...cachedChunks];
+        this.playNextChunk(thisJobId);
+        this.notify();
+        return;
+      }
+
+      // If model is not ready, start loading, show synthesizing spinner, and queue this message
+      if (this.kokoroProgress.status !== 'ready') {
+        this.queuedSpeak = { text: rawText, messageId, config: overrideConfig };
+        this.isSynthesizing = true;
+        this.synthesizingMessageId = messageId || null;
+        this.currentChunk = 1;
+        this.totalChunks = chunks.length;
+        this.playingChunk = 0;
+        this.synthesizingPercent = 0;
+        this.notify();
+        this.loadKokoroModel(false);
+        return;
+      }
+
+      // Trigger background worker synthesis with streaming chunk playback
+      this.activeJobId++;
+      const thisJobId = this.activeJobId;
+      this.isSynthesizing = true;
+      this.synthesizingMessageId = messageId || null;
+      this.currentChunk = 1;
+      this.totalChunks = chunks.length;
+      this.playingChunk = 0;
+      this.synthesizingPercent = 0;
+      this.notify();
+
       try {
-        const cacheKey = `${opts.voiceId}_${opts.speed}_${opts.pitch}_${spokenText}`;
+        const worker = this.getWorker();
+        worker.postMessage({
+          type: 'GENERATE',
+          payload: {
+            jobId: thisJobId,
+            chunks,
+            voice: opts.voiceId,
+            speed: opts.speed,
+            messageId,
+            cacheKey
+          }
+        });
+        return;
+      } catch (err) {
+        console.warn('[TtsService] Worker Kokoro dispatch failed:', err);
+        this.isSynthesizing = false;
+        this.synthesizingMessageId = null;
+        this.notify();
+      }
+      return;
+    }
+
+    // Priority 2: Custom Kokoro Server Endpoint (OpenAI format /v1/audio/speech)
+    if (opts.engine === 'kokoro-endpoint' && opts.kokoroEndpoint) {
+      this.isSynthesizing = true;
+      this.synthesizingMessageId = messageId || null;
+      this.notify();
+
+      try {
+        const cacheKey = `endpoint_${opts.voiceId}_${opts.speed}_${opts.pitch}_${spokenText}`;
         let audioBlobUrl = this.audioCache.get(cacheKey);
 
         if (!audioBlobUrl) {
@@ -378,40 +899,69 @@ export class TtsService {
           this.audioCache.set(cacheKey, audioBlobUrl);
         }
 
+        this.isSynthesizing = false;
+        this.synthesizingMessageId = null;
+        this.isSpeaking = true;
+        this.currentMessageId = messageId || null;
+        this.notify();
+
         const audio = new Audio(audioBlobUrl);
         this.activeAudio = audio;
         audio.playbackRate = opts.speed;
 
-        await new Promise<void>((resolve, reject) => {
-          audio.onended = () => resolve();
-          audio.onerror = e => reject(e);
-          audio.play().catch(reject);
+        await new Promise<void>((resolve) => {
+          audio.onended = () => {
+            this.stop();
+            resolve();
+          };
+          audio.onerror = () => {
+            this.stop();
+            resolve();
+          };
+          audio.play().catch(() => {
+            this.stop();
+            resolve();
+          });
         });
 
-        this.stop();
         return;
       } catch (err) {
-        console.warn('[TtsService] Kokoro endpoint failed, falling back to browser speech synthesis:', err);
-        // Seamless fallback to browser speech synthesis
+        console.warn('[TtsService] Kokoro endpoint failed:', err);
+        this.isSynthesizing = false;
+        this.synthesizingMessageId = null;
+        this.notify();
       }
     }
 
-    // Mode 2: Native Web Speech Synthesis (Zero MB, Instant, Zero Telemetry)
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+    // Priority 3: Native Web Speech Synthesis (Explicit fallback if engine is set to 'browser')
+    if (opts.engine === 'browser' && typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      this.isSpeaking = true;
+      this.currentMessageId = messageId || null;
+      this.notify();
+
       await new Promise<void>((resolve) => {
         try {
+          window.speechSynthesis.cancel();
+          window.speechSynthesis.resume();
+
           const utterance = new SpeechSynthesisUtterance(spokenText);
+          this.activeUtterance = utterance;
+
           utterance.rate = Math.max(0.6, Math.min(1.8, opts.speed));
           utterance.pitch = Math.max(0.5, Math.min(1.6, opts.pitch));
 
-          // Try matching voice by selected gender or English/Japanese language
-          const voices = window.speechSynthesis.getVoices();
+          let voices = this.browserVoices;
+          if (!voices || voices.length === 0) {
+            voices = window.speechSynthesis.getVoices() || [];
+            this.browserVoices = voices;
+          }
+
           if (voices && voices.length > 0) {
             const isJp = selectedProfile.category === 'anime';
             const langCode = isJp ? 'ja' : (selectedProfile.category === 'british' ? 'en-GB' : 'en-US');
             const matchingVoice = voices.find(v =>
               v.lang.toLowerCase().startsWith(langCode.toLowerCase()) &&
-              (selectedProfile.gender === 'female' ? /female|woman|girl|samantha|zira|karen|victoria/i.test(v.name) : /male|man|boy|david|george|alex/i.test(v.name))
+              (selectedProfile.gender === 'female' ? /female|woman|girl|samantha|zira|karen|victoria|natural/i.test(v.name) : /male|man|boy|david|george|alex|natural/i.test(v.name))
             ) || voices.find(v => v.lang.toLowerCase().startsWith(langCode.toLowerCase())) || voices[0];
 
             if (matchingVoice) {
@@ -420,15 +970,25 @@ export class TtsService {
           }
 
           utterance.onend = () => {
+            this.activeUtterance = null;
             this.stop();
             resolve();
           };
-          utterance.onerror = () => {
+          utterance.onerror = (e) => {
+            console.warn('[TtsService] Speech synthesis utterance error:', e);
+            this.activeUtterance = null;
             this.stop();
             resolve();
           };
 
-          window.speechSynthesis.speak(utterance);
+          setTimeout(() => {
+            try {
+              window.speechSynthesis.speak(utterance);
+            } catch {
+              this.stop();
+              resolve();
+            }
+          }, 40);
         } catch {
           this.stop();
           resolve();

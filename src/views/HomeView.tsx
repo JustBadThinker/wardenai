@@ -58,6 +58,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   isBookmarked,
   onToggleBookmark,
   onToggleLike,
+  onSelectTag,
   onOpenImportModal,
   onImportCard
 }) => {
@@ -223,6 +224,16 @@ export const HomeView: React.FC<HomeViewProps> = ({
       const updated = storageService.getSavedCommunityFavorites();
       setCommunityChars(ratingMode === 'limited' ? updated.filter(c => !c.isNsfw) : updated);
     }
+  };
+
+  const handleTagClick = (tagNameOrSlug: string) => {
+    const clean = tagNameOrSlug.replace(/^[^\w\s]+/, '').trim();
+    if (onSelectTag) {
+      onSelectTag(clean);
+    } else {
+      onNavigate('discover');
+    }
+    window.dispatchEvent(new CustomEvent('warden-search-tag', { detail: { tag: clean } }));
   };
 
   const handleImportCommunityChar = async (
@@ -552,6 +563,45 @@ export const HomeView: React.FC<HomeViewProps> = ({
         </div>
       </div>
 
+      {/* Followed Creators Strip (when Following tab is selected) */}
+      {activeTab === 'following' && followedCreators.length > 0 && (
+        <div className="p-3 sm:p-4 rounded-2xl bg-[#14121d] border border-[#262235] space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider flex items-center gap-1.5">
+              <span>Followed Creators</span>
+              <span className="px-1.5 py-0.5 rounded-full bg-purple-950 text-purple-300 text-[10px] border border-purple-800/40">
+                {followedCreators.length}
+              </span>
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {followedCreators.map(fc => (
+              <div
+                key={fc.creatorName}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#1c1929] border border-[#2f2a44] text-xs shadow-sm hover:border-purple-500/40 transition-colors"
+              >
+                {fc.avatarUrl ? (
+                  <img src={fc.avatarUrl} alt={fc.creatorName} className="w-5 h-5 rounded-full object-cover shrink-0" />
+                ) : (
+                  <div className="w-5 h-5 rounded-full bg-purple-600 flex items-center justify-center text-[10px] text-white font-bold shrink-0">
+                    {fc.creatorName.charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <span className="font-bold text-white">@{fc.creatorName}</span>
+                <button
+                  type="button"
+                  onClick={() => handleToggleFollowCreator(fc.creatorName, fc.avatarUrl)}
+                  className="text-[11px] text-neutral-400 hover:text-rose-400 ml-1 cursor-pointer transition-colors"
+                  title="Unfollow"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Main Content Grid */}
       {isLoadingCommunity ? (
         <div className="py-20 flex flex-col items-center justify-center">
@@ -615,14 +665,18 @@ export const HomeView: React.FC<HomeViewProps> = ({
           <Sparkles className="w-8 h-8 text-purple-400 mx-auto" />
           <h3 className="text-base font-bold text-white">
             {activeTab === 'following'
-              ? "You aren't following any creators yet"
+              ? (followedCreators.length === 0
+                  ? "You aren't following any creators yet"
+                  : `Following ${followedCreators.length} creator${followedCreators.length > 1 ? 's' : ''}`)
               : activeTab === 'favorites'
               ? 'No favorite characters saved yet'
               : 'No characters found'}
           </h3>
           <p className="text-xs text-neutral-400 leading-relaxed">
             {activeTab === 'following'
-              ? 'Click the + Follow button next to any @creator handle on a card to follow them and receive automatic notifications when they upload new bots!'
+              ? (followedCreators.length === 0
+                  ? 'Click the + Follow button next to any @creator handle on a card to follow them and receive automatic notifications when they upload new bots!'
+                  : `You're following @${followedCreators.map(f => f.creatorName).join(', @')}. Check back soon for new uploads or explore community bots!`)
               : activeTab === 'favorites'
               ? 'Click the heart icon on any character card to save it to your Favorites list.'
               : 'Try switching tabs or exploring the full community catalog.'}
@@ -661,6 +715,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
               blurNsfw={currentUser.blurNsfw}
               isFollowingCreator={isFollowingCreator(commChar.creatorName)}
               onToggleFollowCreator={handleToggleFollowCreator}
+              onTagClick={(tagId, tagName) => handleTagClick(tagName)}
             />
           ))}
         </div>
@@ -689,6 +744,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 onToggleBookmark={onToggleBookmark}
                 onToggleLike={onToggleLike}
                 blurNsfw={currentUser.blurNsfw}
+                onTagClick={handleTagClick}
               />
             ))}
           </div>
@@ -724,6 +780,10 @@ export const HomeView: React.FC<HomeViewProps> = ({
           selectedCommunityChar ? isFollowingCreator(selectedCommunityChar.creatorName) : false
         }
         onToggleFollowCreator={handleToggleFollowCreator}
+        onTagClick={tagName => {
+          setSelectedCommunityChar(null);
+          handleTagClick(tagName);
+        }}
       />
     </div>
   );

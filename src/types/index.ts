@@ -184,6 +184,11 @@ export interface ChatMessage {
   content: string;
   rawTemplate?: string; // Original opening template containing {{user}} or {{char}} placeholders
   thought?: string;
+  imageUrl?: string; // Scene illustration image URL
+  imagePrompt?: string; // Prompt used to generate the illustration
+  imageStyle?: string; // Style preset used
+  imageLoading?: boolean; // Generating in-progress
+  imageError?: string; // Generation error message
   timestamp: string;
   tokenCount?: number;
 }

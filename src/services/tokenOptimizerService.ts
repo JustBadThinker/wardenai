@@ -6,6 +6,39 @@
 import { Character, CharacterScenario, Persona, Lorebook, Conversation, ChatMessage, TokenOptimizerLevel } from '../types';
 import { extractCleanCharacterName } from './aiProviderService';
 
+/**
+ * Detects whether a message is an Out-Of-Character (OOC) meta-inquiry.
+ * Matches:
+ * [ooc] ...
+ * [ooc: ...]
+ * [ooc]\n...
+ * ((ooc)) ...
+ * (ooc) ...
+ * ooc: ...
+ */
+export function isOocMessage(text?: string): boolean {
+  if (!text) return false;
+  const trimmed = text.trim();
+  if (/^(?:\[{1,2}|\({1,2}|\{)\s*ooc\b/i.test(trimmed)) return true;
+  if (/^ooc\s*[:\-\]]/i.test(trimmed)) return true;
+  if (/^\[ooc\]/i.test(trimmed)) return true;
+  if (/^\[\s*ooc[\s\S]*\]$/i.test(trimmed)) return true;
+  if (/(?:^|\n)\s*\[\s*ooc\s*\]/i.test(trimmed)) return true;
+  return false;
+}
+
+/**
+ * Strips the [ooc] markers to yield the core user question.
+ */
+export function cleanOocContent(text?: string): string {
+  if (!text) return '';
+  return text
+    .replace(/^(?:\[{1,2}|\({1,2}|\{)?\s*ooc(?:\s*[:\-\]]|\s*\])?/i, '')
+    .replace(/\]\s*$/, '')
+    .replace(/^\[ooc\]/i, '')
+    .trim();
+}
+
 export interface TokenOptimizerTierInfo {
   level: TokenOptimizerLevel;
   numericValue: number; // 0: Off, 1: Easy, 2: Medium, 3: Aggressive
@@ -320,12 +353,36 @@ export class TokenOptimizerService {
     if (customRules?.trim()) {
       sections.push(`[USER CUSTOM RULES & INSTRUCTIONS]\n${customRules.trim()}`);
     }
-    sections.push(`[FORMATTING GUIDELINES]
+
+    const realUserMsgs = conversation.messages.filter(
+      m => (m.sender === 'user' || m.senderRole === 'user') && m.id !== 'msg_continue_prompt'
+    );
+    const lastUserMsg = realUserMsgs[realUserMsgs.length - 1];
+    const isOoc = isOocMessage(lastUserMsg?.content);
+
+    if (isOoc) {
+      const cleanQ = cleanOocContent(lastUserMsg?.content) || lastUserMsg?.content || 'General meta-question';
+      sections.push(`[ACTIVE MODE: OUT-OF-CHARACTER (OOC) DISCUSSION]
+The user is asking an Out-Of-Character (OOC) meta-question about the character card, story lore, writing quality, or roleplay dynamic:
+"${cleanQ}"
+
+DIRECTIVES FOR THIS RESPONSE:
+- Begin response immediately with "[OOC]" followed by your direct answer.
+- Do NOT output conversational preambles, greetings, or meta-labels (such as "Certainly!", "Sure", "Regarding your question", or "[OOC Assistant]:").
+- Temporarily step outside of the roleplay persona and character identity.
+- Do NOT speak in-character as ${chatCharName}. Do NOT use roleplay asterisks (*actions*) or character dialogue quotes.
+- Respond directly, candidly, and objectively as an expert AI co-writer, lorekeeper, and character critic.
+- You have full access to the character's background, personality, system instructions, and chat history above. Use this context to answer the user's question with thoughtful, unbiased analysis.`);
+    } else {
+      sections.push(`[FORMATTING GUIDELINES]
 - Maintain immersion. Never break character or refer to yourself as an AI.
 - Always refer to the user by their persona name ("${userName}") and yourself as "${chatCharName}". Never output raw placeholders like {{user}}, [[user]], {{char}}, or [[char]].
 - Format physical micro-actions, gestures, tone, and environment in italics (*action*).
 - Put spoken words in double quotes ("spoken dialogue").
+- Never speak, act, or decide for ${userName} (strictly avoid godmoding).
+- Naturally understand informal slang, humor, and metaphors (e.g., "otak 1 core", teasing, casual banter) without taking them literally or breaking character.
 - Respond with creative detail, emotional realism, and narrative pacing.`);
+    }
 
     const fullPrompt = this.stripImages(
       sections
@@ -384,6 +441,13 @@ export class TokenOptimizerService {
       character.personality
     );
     const userName = persona?.name || 'User';
+
+    const realUserMsgs = conversation.messages.filter(
+      m => (m.sender === 'user' || m.senderRole === 'user') && m.id !== 'msg_continue_prompt'
+    );
+    const lastUserMsg = realUserMsgs[realUserMsgs.length - 1];
+    const isOoc = isOocMessage(lastUserMsg?.content);
+    const cleanOocQuery = isOoc ? cleanOocContent(lastUserMsg?.content) || lastUserMsg?.content || 'General meta-question' : '';
 
     // Deduplicate background against personality (many imported cards copy-paste the same text into both)
     const cleanPersonality = this.cleanCardSyntaxBloat(character.personality);
@@ -444,9 +508,15 @@ export class TokenOptimizerService {
         sections.push(`[RULES]\n${customRules.trim()}`);
       }
 
-      sections.push(
-        `[DIRECTIVES] Stay in-character as ${chatCharName} interacting with ${userName}. Enclose spoken dialogue in quotes ("...") and physical actions/expressions in italics (*...*).`
-      );
+      if (isOoc) {
+        sections.push(
+          `[DIRECTIVES: OOC MODE] Drop roleplay persona and formatting. Answer the user's OOC inquiry ("${cleanOocQuery}") candidly as an AI assistant analyzing ${chatCharName} and the ongoing story.`
+        );
+      } else {
+        sections.push(
+          `[DIRECTIVES] Stay in-character as ${chatCharName} interacting with ${userName}. Enclose spoken dialogue in quotes ("...") and physical actions/expressions in italics (*...*). Do not act/speak for ${userName}. Interpret informal slang/metaphors naturally.`
+        );
+      }
 
       const easyPrompt = this.stripImages(
         sections
@@ -528,7 +598,11 @@ export class TokenOptimizerService {
         sections.push(`[RULES]\n${customRules.trim()}`);
       }
 
-      sections.push(`[STYLE] Roleplay as ${chatCharName} with ${userName}. Dialogue in "quotes", actions in *italics*.`);
+      if (isOoc) {
+        sections.push(`[STYLE: OOC MODE] Drop roleplay persona and asterisks. Answer the user's OOC question ("${cleanOocQuery}") objectively as an AI co-writer.`);
+      } else {
+        sections.push(`[STYLE] Roleplay as ${chatCharName} with ${userName}. Dialogue in "quotes", actions in *italics*. Do not speak for ${userName}. Interpret informal slang naturally.`);
+      }
 
       const mediumPrompt = this.stripImages(
         sections
@@ -592,7 +666,11 @@ export class TokenOptimizerService {
       sections.push(`[RULES] ${customRules.trim().slice(0, 160)}`);
     }
 
-    sections.push(`[FORMAT] Embody ${chatCharName}'s tone & behavior with ${userName}. "Dialogue", *actions*.`);
+    if (isOoc) {
+      sections.push(`[FORMAT: OOC] Respond directly as an AI assistant regarding ${chatCharName}. No RP formatting.`);
+    } else {
+      sections.push(`[FORMAT] Embody ${chatCharName}'s tone & behavior with ${userName}. "Dialogue", *actions*. Do not speak for ${userName}.`);
+    }
 
     const aggressivePrompt = this.stripImages(
       sections

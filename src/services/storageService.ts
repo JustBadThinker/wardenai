@@ -1232,8 +1232,9 @@ class StorageService {
 
   public isFollowingCreator(userId: string = 'default', creatorName: string): boolean {
     if (!creatorName) return false;
+    const clean = creatorName.replace(/^@+/, '').trim().toLowerCase();
     const list = this.getFollowedCreators(userId);
-    return list.some(c => c.creatorName.toLowerCase() === creatorName.toLowerCase());
+    return list.some(c => (c.creatorName || '').replace(/^@+/, '').trim().toLowerCase() === clean);
   }
 
   public toggleFollowCreator(
@@ -1243,8 +1244,10 @@ class StorageService {
     knownIds: string[] = []
   ): boolean {
     if (!creatorName) return false;
+    const clean = creatorName.replace(/^@+/, '').trim();
+    const cleanLower = clean.toLowerCase();
     const list = this.getFollowedCreators(userId);
-    const idx = list.findIndex(c => c.creatorName.toLowerCase() === creatorName.toLowerCase());
+    const idx = list.findIndex(c => (c.creatorName || '').replace(/^@+/, '').trim().toLowerCase() === cleanLower);
 
     if (idx >= 0) {
       list.splice(idx, 1);
@@ -1252,7 +1255,7 @@ class StorageService {
       return false;
     } else {
       list.unshift({
-        creatorName,
+        creatorName: clean,
         avatarUrl,
         followedAt: new Date().toISOString(),
         knownCharacterIds: knownIds,
@@ -1261,8 +1264,8 @@ class StorageService {
       this.saveFollowedCreators(userId, list);
       this.pushNotification({
         type: 'follower',
-        title: `Following @${creatorName}`,
-        message: `You will now see @${creatorName}'s characters in your Following feed and receive alerts when they upload new bots.`,
+        title: `Following @${clean}`,
+        message: `You will now see @${clean}'s characters in your Following feed and receive alerts when they upload new bots.`,
         time: 'Just now'
       });
       return true;

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence, useDragControls } from 'motion/react';
 import {
   Send,
   Square,
@@ -68,7 +68,7 @@ import {
 import { aiProviderService, extractCleanCharacterName, extractThoughtAndContent } from '../services/aiProviderService';
 import { storageService, BotRulePreset } from '../services/storageService';
 import { TokenOptimizerSlider } from '../components/common/TokenOptimizerSlider';
-import { tokenOptimizerService } from '../services/tokenOptimizerService';
+import { tokenOptimizerService, isOocMessage } from '../services/tokenOptimizerService';
 import { tokenPriceService, DEFAULT_USD_TO_IDR_RATE } from '../services/tokenPriceService';
 import { TokenCounterModal } from '../components/common/TokenCounterModal';
 import { RichTextRenderer } from '../components/common/RichTextRenderer';
@@ -76,6 +76,13 @@ import { CatPulsingLoader } from '../components/common/CatPulsingLoader';
 import { ImageLightboxModal } from '../components/common/ImageLightboxModal';
 import { CustomSelect } from '../components/common/CustomSelect';
 import { ttsService, TtsConfig, KOKORO_VOICES } from '../services/ttsService';
+import {
+  imageGenService,
+  ImageGenConfig,
+  IMAGE_STYLE_OPTIONS,
+  ImageStylePreset,
+  ImageGenProvider
+} from '../services/imageGenService';
 import {
   exportTranscriptMarkdown,
   exportTranscriptPlainText,
@@ -352,7 +359,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
   const [transcriptFormat, setTranscriptFormat] = useState<'md' | 'txt' | 'json'>('md');
   const [transcriptCopied, setTranscriptCopied] = useState(false);
 
-  // Adaptive Drawer & Collapsible Accordion State
+  // Adaptive Drawer & Single-Focus Collapsible Accordion State
   const [isMobileScreen, setIsMobileScreen] = useState(() => typeof window !== 'undefined' && window.innerWidth < 640);
   useEffect(() => {
     const handleResize = () => setIsMobileScreen(window.innerWidth < 640);
@@ -360,18 +367,83 @@ export const ChatView: React.FC<ChatViewProps> = ({
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const [openAccordions, setOpenAccordions] = useState<Record<string, boolean>>({
-    aiEngine: true,
-    persona: false,
-    voice: true,
-    tuning: false,
-    prompt: false,
-    tokens: false,
-    tools: false
-  });
+  const [activeAccordion, setActiveAccordion] = useState<string | null>('voice');
 
   const toggleAccordion = (key: string) => {
-    setOpenAccordions(prev => ({ ...prev, [key]: !prev[key] }));
+    setActiveAccordion(prev => (prev === key ? null : key));
+  };
+
+  // Drawer Gestures & Tabs Navigation
+  const drawerDragControls = useDragControls();
+  const pillTouchStartY = useRef<number | null>(null);
+  const bodyTouchStartX = useRef<number | null>(null);
+  const bodyTouchStartY = useRef<number | null>(null);
+
+  const PANEL_TABS: ('options' | 'memory' | 'customize')[] = ['options', 'memory', 'customize'];
+
+  const handleBodyTouchStart = (e: React.TouchEvent) => {
+    // Prevent slider drags, buttons, and form interactions from triggering tab switches
+    const target = e.target as HTMLElement | null;
+    if (
+      target &&
+      (target.tagName === 'INPUT' ||
+        target.closest('input') ||
+        target.closest('.no-swipe') ||
+        target.tagName === 'TEXTAREA' ||
+        target.closest('button'))
+    ) {
+      bodyTouchStartX.current = null;
+      bodyTouchStartY.current = null;
+      return;
+    }
+
+    bodyTouchStartX.current = e.touches[0].clientX;
+    bodyTouchStartY.current = e.touches[0].clientY;
+  };
+
+  const handleBodyTouchEnd = (e: React.TouchEvent) => {
+    if (bodyTouchStartX.current === null || bodyTouchStartY.current === null) return;
+    const target = e.target as HTMLElement | null;
+    if (
+      target &&
+      (target.tagName === 'INPUT' ||
+        target.closest('input') ||
+        target.closest('.no-swipe') ||
+        target.tagName === 'TEXTAREA' ||
+        target.closest('button'))
+    ) {
+      bodyTouchStartX.current = null;
+      bodyTouchStartY.current = null;
+      return;
+    }
+
+    const deltaX = e.changedTouches[0].clientX - bodyTouchStartX.current;
+    const deltaY = e.changedTouches[0].clientY - bodyTouchStartY.current;
+    bodyTouchStartX.current = null;
+    bodyTouchStartY.current = null;
+
+    // Horizontal swipe between tabs (Options <-> Memory <-> Style)
+    if (Math.abs(deltaX) > 40 && Math.abs(deltaX) > Math.abs(deltaY) * 1.3) {
+      const currentIndex = PANEL_TABS.indexOf(rightPanel as any);
+      if (currentIndex !== -1) {
+        if (deltaX < 0 && currentIndex < PANEL_TABS.length - 1) {
+          // Swiped left -> Next tab
+          setRightPanel(PANEL_TABS[currentIndex + 1]);
+        } else if (deltaX > 0 && currentIndex > 0) {
+          // Swiped right -> Previous tab
+          setRightPanel(PANEL_TABS[currentIndex - 1]);
+        }
+      }
+      return;
+    }
+
+    // Pull down when scroll is at top to close
+    if (deltaY > 80 && deltaY > Math.abs(deltaX) * 1.5) {
+      const target = e.currentTarget as HTMLElement;
+      if (target && target.scrollTop <= 5) {
+        setRightPanel('hidden');
+      }
+    }
   };
 
   // Kokoro TTS State & Listeners
@@ -391,9 +463,90 @@ export const ChatView: React.FC<ChatViewProps> = ({
     setTtsConfig(next);
   };
 
+  const handleDownloadKokoro = async () => {
+    await ttsService.loadKokoroModel();
+  };
+
+  const handleDownloadWardenFolder = () => {
+    ttsService.downloadModelDirectlyToFolder();
+  };
+
   const handleTestVoice = () => {
-    const testSample = `"Hello! I'm ${character.name.split(' ')[0]}. My voice is configured and ready for our roleplay."`;
+    const testSample = `"Hello! I'm ${chatCharName}. My voice is configured and ready for our roleplay."`;
     ttsService.speak(testSample, 'tts-test-sample', ttsConfig);
+  };
+
+  // Scene Illustration / Image Generation State & Handlers
+  const [imageGenConfig, setImageGenConfig] = useState<ImageGenConfig>(() => imageGenService.getConfig());
+  const updateImageGenConfig = (updates: Partial<ImageGenConfig>) => {
+    const next = imageGenService.saveConfig(updates);
+    setImageGenConfig(next);
+  };
+
+  const handleGenerateIllustration = async (msgId: string, content: string) => {
+    setMessages(prev =>
+      prev.map(m => (m.id === msgId ? { ...m, imageLoading: true, imageError: undefined } : m))
+    );
+
+    try {
+      const prompt = imageGenService.buildScenePrompt(
+        character,
+        content,
+        currentPersona,
+        imageGenConfig.style,
+        imageGenConfig.customStylePrompt
+      );
+
+      const res = await imageGenService.generateImage(prompt, imageGenConfig);
+
+      setMessages(prev => {
+        const updated = prev.map(m =>
+          m.id === msgId
+            ? {
+                ...m,
+                imageUrl: res.imageUrl,
+                imagePrompt: res.prompt,
+                imageStyle: imageGenConfig.style,
+                imageLoading: false,
+                imageError: undefined
+              }
+            : m
+        );
+        onUpdateConversation({ ...conversation, messages: updated });
+        return updated;
+      });
+    } catch (err: any) {
+      console.error('[ChatView] Image generation failed:', err);
+      setMessages(prev =>
+        prev.map(m =>
+          m.id === msgId
+            ? { ...m, imageLoading: false, imageError: err?.message || 'Failed to generate illustration' }
+            : m
+        )
+      );
+    }
+  };
+
+  const handleDeleteIllustration = (msgId: string) => {
+    setMessages(prev => {
+      const updated = prev.map(m =>
+        m.id === msgId ? { ...m, imageUrl: undefined, imagePrompt: undefined, imageError: undefined, imageLoading: false } : m
+      );
+      onUpdateConversation({ ...conversation, messages: updated });
+      return updated;
+    });
+  };
+
+  const handleIllustrateCurrentScene = () => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].sender !== 'user' && messages[i].senderRole !== 'user') {
+        handleGenerateIllustration(messages[i].id, messages[i].content);
+        return;
+      }
+    }
+    if (messages.length > 0) {
+      handleGenerateIllustration(messages[messages.length - 1].id, messages[messages.length - 1].content);
+    }
   };
 
   const currentPersona = allPersonas.find(p => p.id === activePersonaId) || persona || allPersonas[0];
@@ -1701,7 +1854,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
               {/* Character name badge */}
               <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-purple-950/40 border border-purple-500/30 text-purple-200 text-xs font-semibold shadow-md">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                <span>Opening {character.name.split(' ')[0]}</span>
+                <span>Opening {chatCharName}</span>
               </div>
             </motion.div>
           </motion.div>
@@ -1980,7 +2133,10 @@ export const ChatView: React.FC<ChatViewProps> = ({
         >
           <div className="flex items-center gap-2.5 min-w-0">
             <button
-              onClick={onBack}
+              onClick={() => {
+                ttsService.stop();
+                onBack();
+              }}
               className="p-1.5 -ml-1 text-neutral-400 hover:text-white rounded-lg hover:bg-neutral-850 transition-colors cursor-pointer"
               title="Return back"
             >
@@ -2109,36 +2265,88 @@ export const ChatView: React.FC<ChatViewProps> = ({
                           {senderName}
                         </button>
                         <span className="text-[10px] text-neutral-500 font-normal shrink-0">{msg.timestamp}</span>
+                        {(isOocMessage(msg.content) || (!isUser && index > 0 && isOocMessage(messages[index - 1]?.content))) && (
+                          <span className="px-1.5 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/30 text-[9px] font-mono font-semibold text-amber-300 tracking-wider">
+                            OOC
+                          </span>
+                        )}
                       </div>
 
                       {/* Action buttons: transparent frosted glass pill */}
                       <div className="opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity flex items-center gap-0.5 sm:gap-1 bg-[#0c0e14]/60 backdrop-blur-xl px-1.5 py-0.5 rounded-xl border border-white/15 shadow-lg shrink-0 mr-0.5 z-10">
                         {/* Character Voice TTS Button */}
+                        {!isUser && (() => {
+                          const isThisSynthesizing = ttsPlayback.isSynthesizing && ttsPlayback.synthesizingMessageId === msg.id;
+                          const isThisSpeaking = ttsPlayback.isSpeaking && ttsPlayback.currentMessageId === msg.id;
+
+                          if (isThisSpeaking) {
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => ttsService.stop()}
+                                className="p-1.5 sm:p-1 active:scale-90 transition-all cursor-pointer rounded-xl flex items-center gap-1.5 text-pink-300 bg-pink-950/70 border border-pink-600/50 px-2 py-0.5 animate-pulse shadow-sm shadow-pink-900/30"
+                                title="Stop audio playback (Click to abort)"
+                              >
+                                <Square className="w-3 h-3 fill-current text-pink-400 shrink-0" />
+                                <span className="text-[11px] font-sans font-bold text-pink-300">
+                                  Stop ({ttsPlayback.playingChunk || 1}/{ttsPlayback.totalChunks || 1})
+                                </span>
+                              </button>
+                            );
+                          }
+
+                          if (isThisSynthesizing) {
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => ttsService.stop()}
+                                className="p-1.5 sm:p-1 active:scale-90 transition-all cursor-pointer rounded-xl flex items-center gap-1.5 text-purple-300 bg-purple-950/80 border border-purple-500/50 px-2 py-0.5 animate-pulse shadow-sm shadow-purple-900/30"
+                                title="Synthesizing voice... (Click to cancel)"
+                              >
+                                <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-400 shrink-0" />
+                                <span className="text-[11px] font-mono font-bold text-purple-300">
+                                  {ttsPlayback.kokoroProgress.status === 'downloading'
+                                    ? `${ttsPlayback.kokoroProgress.progress}%`
+                                    : `${ttsPlayback.currentChunk || 1}/${ttsPlayback.totalChunks || 1} • ${ttsPlayback.synthesizingPercent}%`}
+                                </span>
+                              </button>
+                            );
+                          }
+
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => ttsService.speak(msg.content, msg.id, ttsConfig)}
+                              className="p-1.5 sm:p-1 active:scale-90 transition-all cursor-pointer rounded-xl flex items-center gap-1.5 text-neutral-400 hover:text-pink-300 hover:bg-white/5"
+                              title="Play character voice (dialogue only)"
+                            >
+                              <Volume2 className="w-3.5 h-3.5" />
+                            </button>
+                          );
+                        })()}
+
+                        {/* Scene Illustration Button */}
                         {!isUser && (
                           <button
                             type="button"
-                            onClick={() => {
-                              if (ttsPlayback.isSpeaking && ttsPlayback.currentMessageId === msg.id) {
-                                ttsService.stop();
-                              } else {
-                                ttsService.speak(msg.content, msg.id, ttsConfig);
-                              }
-                            }}
-                            className={`p-1.5 sm:p-1 active:scale-90 transition-transform cursor-pointer rounded-lg ${
-                              ttsPlayback.isSpeaking && ttsPlayback.currentMessageId === msg.id
-                                ? 'text-pink-400 bg-pink-950/60 ring-1 ring-pink-500/50 animate-pulse'
-                                : 'text-neutral-400 hover:text-pink-300'
+                            onClick={() => handleGenerateIllustration(msg.id, msg.content)}
+                            disabled={msg.imageLoading}
+                            className={`p-1.5 sm:p-1 active:scale-90 transition-all cursor-pointer rounded-xl flex items-center gap-1 ${
+                              msg.imageLoading
+                                ? 'text-cyan-400 animate-pulse bg-cyan-950/40 border border-cyan-500/30 px-1.5'
+                                : msg.imageUrl
+                                ? 'text-cyan-300 hover:text-cyan-200'
+                                : 'text-neutral-400 hover:text-cyan-300 hover:bg-white/5'
                             }`}
-                            title={
-                              ttsPlayback.isSpeaking && ttsPlayback.currentMessageId === msg.id
-                                ? 'Stop voice playback'
-                                : 'Play character voice (reads dialogue only)'
-                            }
+                            title={msg.imageUrl ? 'Regenerate scene illustration' : 'Illustrate this scene (AI Image)'}
                           >
-                            {ttsPlayback.isSpeaking && ttsPlayback.currentMessageId === msg.id ? (
-                              <Square className="w-3.5 h-3.5 fill-current" />
+                            {msg.imageLoading ? (
+                              <>
+                                <Loader2 className="w-3.5 h-3.5 animate-spin text-cyan-400 shrink-0" />
+                                <span className="text-[10px] font-bold text-cyan-300 hidden xs:inline">Drawing...</span>
+                              </>
                             ) : (
-                              <Volume2 className="w-3.5 h-3.5" />
+                              <Palette className="w-3.5 h-3.5" />
                             )}
                           </button>
                         )}
@@ -2332,6 +2540,65 @@ export const ChatView: React.FC<ChatViewProps> = ({
                                 isUser,
                                 effectivePersona?.name || msg.personaName || currentUser.displayName
                               )}
+
+                              {/* Scene Illustration Card (Attached to this message) */}
+                              {msg.imageLoading && (
+                                <div className="mt-3 p-3.5 rounded-2xl bg-gradient-to-r from-purple-950/40 via-cyan-950/30 to-purple-950/40 border border-cyan-500/30 backdrop-blur-md animate-pulse flex items-center gap-3">
+                                  <Loader2 className="w-5 h-5 animate-spin text-cyan-400 shrink-0" />
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-xs font-bold text-cyan-200">Drawing Scene Illustration...</p>
+                                    <p className="text-[10px] text-cyan-300/70 truncate">Generating visual from chat situation ({imageGenConfig.style || 'anime'})</p>
+                                  </div>
+                                </div>
+                              )}
+
+                              {msg.imageUrl && (
+                                <div className="mt-3 rounded-2xl overflow-hidden border border-purple-500/30 bg-[#0c0e14]/80 backdrop-blur-md shadow-2xl max-w-sm sm:max-w-md group/img relative">
+                                  <img
+                                    src={msg.imageUrl}
+                                    alt={msg.imagePrompt || 'Scene illustration'}
+                                    onClick={() => setLightboxImage({ url: msg.imageUrl!, title: msg.imagePrompt ? `${chatCharName}: ${msg.imagePrompt}` : `${chatCharName} — Scene Illustration` })}
+                                    className="w-full h-auto max-h-[460px] object-cover cursor-pointer hover:scale-[1.01] transition-transform duration-300"
+                                    loading="lazy"
+                                  />
+                                  <div className="p-2.5 bg-[#0a0c14]/95 border-t border-white/10 flex items-center justify-between gap-2">
+                                    <span className="text-[10px] text-neutral-400 font-mono truncate max-w-[200px] sm:max-w-xs cursor-help" title={msg.imagePrompt}>
+                                      🎨 {msg.imagePrompt ? msg.imagePrompt.slice(0, 45) + '...' : 'Anime Illustration'}
+                                    </span>
+                                    <div className="flex items-center gap-1 shrink-0">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleGenerateIllustration(msg.id, msg.content)}
+                                        className="p-1 text-neutral-400 hover:text-cyan-300 rounded hover:bg-white/5 transition-colors cursor-pointer"
+                                        title="Regenerate scene illustration"
+                                      >
+                                        <RotateCcw className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteIllustration(msg.id)}
+                                        className="p-1 text-neutral-400 hover:text-rose-400 rounded hover:bg-white/5 transition-colors cursor-pointer"
+                                        title="Remove illustration"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+
+                              {msg.imageError && (
+                                <div className="mt-2.5 p-2 px-3 rounded-xl bg-rose-950/40 border border-rose-500/30 text-rose-300 text-[11px] flex items-center justify-between gap-2">
+                                  <span>Failed to generate image: {msg.imageError}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleGenerateIllustration(msg.id, msg.content)}
+                                    className="text-white underline font-bold hover:text-rose-200 cursor-pointer text-[10px]"
+                                  >
+                                    Retry
+                                  </button>
+                                </div>
+                              )}
                             </>
                           );
                         })()}
@@ -2495,6 +2762,14 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 </button>
                 <button
                   type="button"
+                  onClick={() => handleInsertFormat('[ooc] ', '', '')}
+                  className="px-2 py-1 rounded-lg hover:bg-amber-950/40 text-amber-400 hover:text-amber-300 text-[11px] font-mono font-bold border border-amber-500/30 transition-colors cursor-pointer"
+                  title="Out-Of-Character meta question ([ooc])"
+                >
+                  [ooc]
+                </button>
+                <button
+                  type="button"
                   onClick={() => handleInsertFormat('{{', '}}', 'user')}
                   className="px-2 py-1 rounded-lg hover:bg-[#1f2538] text-purple-400 hover:text-purple-300 text-[11px] font-mono transition-colors cursor-pointer"
                   title="Macro Tag ({{user}} or {{char}})"
@@ -2510,6 +2785,19 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 >
                   ✕
                 </button>
+              </div>
+            )}
+
+            {/* OOC Mode Floating Status Banner */}
+            {isOocMessage(inputText) && (
+              <div className="mb-2 px-3 py-1.5 rounded-xl bg-amber-950/50 border border-amber-500/40 backdrop-blur-md flex items-center justify-between gap-2 text-xs text-amber-300 animate-slide-up shadow-lg shadow-amber-950/20">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
+                  <span className="font-bold text-[10px] uppercase tracking-wider text-amber-200 shrink-0">OOC Mode Active</span>
+                  <span className="text-[11px] text-amber-300/80 truncate">
+                    AI akan menjawab langsung di luar karakter tanpa format RP, dengan tetap memahami konteks {chatCharName}.
+                  </span>
+                </div>
               </div>
             )}
 
@@ -2765,6 +3053,30 @@ export const ChatView: React.FC<ChatViewProps> = ({
                               </button>
                             </div>
                           )}
+
+                          {/* Option 4: Illustrate Current Scene */}
+                          {messages.length > 0 && (
+                            <div className="pt-1 border-t border-[#202638]">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setIsAssistMenuOpen(false);
+                                  handleIllustrateCurrentScene();
+                                }}
+                                className="w-full flex items-start gap-2.5 p-2 rounded-xl hover:bg-cyan-600/20 text-left transition-colors cursor-pointer group"
+                              >
+                                <Palette className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5 group-hover:scale-110 transition-transform" />
+                                <div>
+                                  <div className="text-xs font-bold text-white group-hover:text-cyan-200">
+                                    Illustrate current scene
+                                  </div>
+                                  <div className="text-[10px] text-neutral-400 leading-tight mt-0.5">
+                                    Draw anime scene visual from the latest chat context
+                                  </div>
+                                </div>
+                              </button>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -2806,23 +3118,52 @@ export const ChatView: React.FC<ChatViewProps> = ({
               animate={isMobileScreen ? { y: 0 } : { x: 0 }}
               exit={isMobileScreen ? { y: '100%' } : { x: '100%' }}
               transition={{ type: 'spring', damping: 30, stiffness: 350, mass: 0.8 }}
+              drag={isMobileScreen ? 'y' : false}
+              dragControls={drawerDragControls}
+              dragListener={false}
+              dragConstraints={{ top: 0, bottom: 0 }}
+              dragElastic={{ top: 0, bottom: 0.8 }}
+              onDragEnd={(_, info) => {
+                if (info.offset.y > 70 || info.velocity.y > 350) {
+                  setRightPanel('hidden');
+                }
+              }}
               className="relative w-full sm:w-96 max-h-[88dvh] sm:max-h-full sm:h-full bg-[#0c0e14] border-t sm:border-t-0 sm:border-l border-[#1f2434] rounded-t-3xl sm:rounded-none flex flex-col shadow-2xl z-10 overflow-hidden transform-gpu"
               style={{
                 paddingBottom: isMobileScreen ? 'max(14px, env(safe-area-inset-bottom, 14px))' : 'env(safe-area-inset-bottom, 0px)'
               }}
             >
               {/* Mobile Drag Pill Handle */}
-              <div className="sm:hidden pt-3 pb-1 flex justify-center shrink-0">
+              <div
+                className="sm:hidden pt-3 pb-2 flex justify-center shrink-0 cursor-grab active:cursor-grabbing touch-none select-none"
+                onPointerDown={(e) => drawerDragControls.start(e)}
+                onTouchStart={(e) => {
+                  pillTouchStartY.current = e.touches[0].clientY;
+                }}
+                onTouchEnd={(e) => {
+                  if (pillTouchStartY.current !== null) {
+                    const deltaY = e.changedTouches[0].clientY - pillTouchStartY.current;
+                    if (deltaY > 35) {
+                      setRightPanel('hidden');
+                    }
+                    pillTouchStartY.current = null;
+                  }
+                }}
+              >
                 <div
-                  className="w-12 h-1.5 rounded-full bg-neutral-700/80 cursor-pointer active:bg-purple-500 transition-colors"
+                  className="w-12 h-1.5 rounded-full bg-neutral-600 active:bg-purple-500 transition-colors"
                   onClick={() => setRightPanel('hidden')}
-                  title="Swipe or click to close"
+                  title="Drag down or click to close"
                 />
               </div>
 
               {/* Drawer Header with 3 Tabs */}
               <div
-                className="border-b border-[#1a1d27] px-3 sm:px-4 flex items-center justify-between shrink-0 bg-[#0c0e14]"
+                className="border-b border-[#1a1d27] px-3 sm:px-4 flex items-center justify-between shrink-0 bg-[#0c0e14] select-none"
+                onPointerDown={(e) => {
+                  if ((e.target as HTMLElement).closest('button')) return;
+                  drawerDragControls.start(e);
+                }}
                 style={{
                   paddingTop: isMobileScreen ? '6px' : 'max(14px, env(safe-area-inset-top, 14px))',
                   minHeight: isMobileScreen ? '48px' : 'calc(52px + max(14px, env(safe-area-inset-top, 14px)))',
@@ -2890,7 +3231,13 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 </button>
               </div>
 
-            {/* DRAWER BODY: TAB 1 - OPTIONS (Clean Collapsible Accordions) */}
+              {/* DRAWER BODY CONTAINER: HORIZONTAL SWIPE BETWEEN TABS (Options <-> Memory <-> Style) */}
+              <div
+                className="flex-1 overflow-hidden flex flex-col relative"
+                onTouchStart={handleBodyTouchStart}
+                onTouchEnd={handleBodyTouchEnd}
+              >
+            {/* DRAWER BODY: TAB 1 - OPTIONS (Single-Focus Smooth Accordions) */}
             {rightPanel === 'options' && (
               <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 text-xs">
 
@@ -2909,135 +3256,146 @@ export const ChatView: React.FC<ChatViewProps> = ({
                       <span className="text-[10px] text-purple-400 uppercase font-mono bg-purple-950/60 px-1.5 py-0.5 rounded border border-purple-800/40">
                         {providerType}
                       </span>
-                      <ChevronDown className={`w-3.5 h-3.5 text-neutral-400 transition-transform duration-200 ${openAccordions.aiEngine ? 'rotate-180' : ''}`} />
+                      <ChevronDown className={`w-3.5 h-3.5 text-neutral-400 transition-transform duration-200 ${activeAccordion === 'aiEngine' ? 'rotate-180' : ''}`} />
                     </div>
                   </button>
 
-                  {openAccordions.aiEngine && (
-                    <div className="p-3.5 pt-1 space-y-3 border-t border-[#1a1d27]/70">
-                      <div>
-                        <label className="text-neutral-400 block mb-1 text-[11px]">Provider Architecture</label>
-                        <CustomSelect<ProviderType>
-                          value={providerType}
-                          onChange={val => {
-                            let newUrl = gatewayBaseUrl;
-                            let newModel = gatewayModel;
-                            if (val === 'openrouter') {
-                              newUrl = 'https://openrouter.ai/api/v1';
-                              newModel = 'anthropic/claude-3.5-sonnet';
-                            } else if (val === 'openai') {
-                              newUrl = 'https://api.openai.com/v1';
-                              newModel = 'gpt-4o-mini';
-                            } else if (val === 'gemini') {
-                              newModel = 'gemini-2.5-flash';
-                            }
-                            saveGatewayToLocalStorage({ type: val, baseUrl: newUrl, model: newModel });
-                            setConnectionTestResult(null);
-                          }}
-                          options={[
-                            { value: 'simulation', label: 'Built-in Roleplay Simulation Engine', description: 'Zero-config offline engine' },
-                            { value: 'custom', label: 'Custom AI Gateway / Reverse Proxy (OpenAI format)', description: 'Connect your own private server or proxy' },
-                            { value: 'openrouter', label: 'OpenRouter (Claude, Llama, Mistral)', description: 'Multi-model API gateway' },
-                            { value: 'openai', label: 'OpenAI Direct (GPT-4o, GPT-4o-mini)', description: 'Official OpenAI endpoint' },
-                            { value: 'gemini', label: 'Google Gemini API', description: 'Official Google Gemini models' }
-                          ]}
-                          className="bg-[#181c28] border-[#262c3e]"
-                        />
-                      </div>
+                  <AnimatePresence initial={false}>
+                    {activeAccordion === 'aiEngine' && (
+                      <motion.div
+                        key="content-aiEngine"
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.28, ease: [0.04, 0.62, 0.23, 0.98] }}
+                        className="overflow-hidden"
+                      >
+                        <div className="p-3.5 pt-1 space-y-3 border-t border-[#1a1d27]/70">
+                          <div>
+                            <label className="text-neutral-400 block mb-1 text-[11px]">Provider Architecture</label>
+                            <CustomSelect<ProviderType>
+                              value={providerType}
+                              onChange={val => {
+                                let newUrl = gatewayBaseUrl;
+                                let newModel = gatewayModel;
+                                if (val === 'openrouter') {
+                                  newUrl = 'https://openrouter.ai/api/v1';
+                                  newModel = 'anthropic/claude-3.5-sonnet';
+                                } else if (val === 'openai') {
+                                  newUrl = 'https://api.openai.com/v1';
+                                  newModel = 'gpt-4o-mini';
+                                } else if (val === 'gemini') {
+                                  newModel = 'gemini-2.5-flash';
+                                }
+                                saveGatewayToLocalStorage({ type: val, baseUrl: newUrl, model: newModel });
+                                setConnectionTestResult(null);
+                              }}
+                              options={[
+                                { value: 'simulation', label: 'Built-in Roleplay Simulation Engine', description: 'Zero-config offline engine' },
+                                { value: 'custom', label: 'Custom AI Gateway / Reverse Proxy (OpenAI format)', description: 'Connect your own private server or proxy' },
+                                { value: 'openrouter', label: 'OpenRouter (Claude, Llama, Mistral)', description: 'Multi-model API gateway' },
+                                { value: 'openai', label: 'OpenAI Direct (GPT-4o, GPT-4o-mini)', description: 'Official OpenAI endpoint' },
+                                { value: 'gemini', label: 'Google Gemini API', description: 'Official Google Gemini models' }
+                              ]}
+                              className="bg-[#181c28] border-[#262c3e]"
+                            />
+                          </div>
 
-                      {/* Gateway Base URL */}
-                      {(providerType === 'custom' || providerType === 'openrouter') && (
-                        <div>
-                          <label className="text-neutral-400 block mb-1 text-[11px]">Gateway / Proxy Base URL</label>
-                          <input
-                            type="text"
-                            placeholder="https://my-proxy.com/v1"
-                            value={gatewayBaseUrl}
-                            onChange={e => {
-                              saveGatewayToLocalStorage({ baseUrl: e.target.value });
-                              setConnectionTestResult(null);
-                            }}
-                            className="w-full bg-[#181c28] border border-[#262c3e] rounded-xl p-2 text-xs text-white font-mono placeholder-neutral-600 focus:outline-none focus:border-purple-500"
-                          />
-                        </div>
-                      )}
+                          {/* Gateway Base URL */}
+                          {(providerType === 'custom' || providerType === 'openrouter') && (
+                            <div>
+                              <label className="text-neutral-400 block mb-1 text-[11px]">Gateway / Proxy Base URL</label>
+                              <input
+                                type="text"
+                                placeholder="https://my-proxy.com/v1"
+                                value={gatewayBaseUrl}
+                                onChange={e => {
+                                  saveGatewayToLocalStorage({ baseUrl: e.target.value });
+                                  setConnectionTestResult(null);
+                                }}
+                                className="w-full bg-[#181c28] border border-[#262c3e] rounded-xl p-2 text-xs text-white font-mono placeholder-neutral-600 focus:outline-none focus:border-purple-500"
+                              />
+                            </div>
+                          )}
 
-                      {/* Model ID */}
-                      <div>
-                        <label className="text-neutral-400 block mb-1 text-[11px]">Custom Model Name</label>
-                        <input
-                          type="text"
-                          placeholder="e.g. meta-llama/llama-3.3-70b-instruct"
-                          value={gatewayModel}
-                          onChange={e => {
-                            saveGatewayToLocalStorage({ model: e.target.value });
-                            setConnectionTestResult(null);
-                          }}
-                          className="w-full bg-[#181c28] border border-[#262c3e] rounded-xl p-2 text-xs text-white font-mono placeholder-neutral-600 focus:outline-none focus:border-purple-500"
-                        />
-                      </div>
+                          {/* Model ID */}
+                          <div>
+                            <label className="text-neutral-400 block mb-1 text-[11px]">Custom Model Name</label>
+                            <input
+                              type="text"
+                              placeholder="e.g. meta-llama/llama-3.3-70b-instruct"
+                              value={gatewayModel}
+                              onChange={e => {
+                                saveGatewayToLocalStorage({ model: e.target.value });
+                                setConnectionTestResult(null);
+                              }}
+                              className="w-full bg-[#181c28] border border-[#262c3e] rounded-xl p-2 text-xs text-white font-mono placeholder-neutral-600 focus:outline-none focus:border-purple-500"
+                            />
+                          </div>
 
-                      {/* API Key */}
-                      {providerType !== 'simulation' && (
-                        <div>
-                          <div className="flex items-center justify-between mb-1">
-                            <label className="text-neutral-400 text-[11px]">API Key</label>
+                          {/* API Key */}
+                          {providerType !== 'simulation' && (
+                            <div>
+                              <div className="flex items-center justify-between mb-1">
+                                <label className="text-neutral-400 text-[11px]">API Key</label>
+                                <button
+                                  type="button"
+                                  onClick={() => setShowApiKey(!showApiKey)}
+                                  className="text-[10px] text-neutral-400 hover:text-neutral-200 flex items-center gap-1"
+                                >
+                                  {showApiKey ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                                  <span>{showApiKey ? 'Hide' : 'Show'}</span>
+                                </button>
+                              </div>
+                              <input
+                                type={showApiKey ? 'text' : 'password'}
+                                placeholder="sk-..."
+                                value={gatewayApiKey}
+                                onChange={e => {
+                                  saveGatewayToLocalStorage({ apiKey: e.target.value });
+                                  setConnectionTestResult(null);
+                                }}
+                                className="w-full bg-[#181c28] border border-[#262c3e] rounded-xl p-2 text-xs text-white font-mono placeholder-neutral-600 focus:outline-none focus:border-purple-500"
+                              />
+                            </div>
+                          )}
+
+                          {/* Auto-save & Test button */}
+                          <div className="pt-1 space-y-2">
                             <button
                               type="button"
-                              onClick={() => setShowApiKey(!showApiKey)}
-                              className="text-[10px] text-neutral-400 hover:text-neutral-200 flex items-center gap-1"
+                              onClick={handleTestAIConnection}
+                              disabled={isTestingConnection}
+                              className="w-full py-2 bg-purple-700 hover:bg-purple-600 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer"
                             >
-                              {showApiKey ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                              <span>{showApiKey ? 'Hide' : 'Show'}</span>
+                              <Zap className="w-3.5 h-3.5 fill-white" />
+                              <span>{isTestingConnection ? 'Testing Connection...' : 'Test Connection'}</span>
                             </button>
+
+                            {connectionTestResult && (
+                              <div
+                                className={`p-2.5 rounded-xl text-[11px] leading-relaxed border ${
+                                  connectionTestResult.success
+                                    ? 'bg-emerald-950/60 border-emerald-800/50 text-emerald-300'
+                                    : 'bg-rose-950/60 border-rose-800/50 text-rose-300'
+                                }`}
+                              >
+                                <div className="font-bold flex items-center gap-1">
+                                  {connectionTestResult.success ? '✓ Operational' : '✕ Connection Issue'}
+                                  {connectionTestResult.latencyMs !== undefined && (
+                                    <span className="font-mono text-[10px] opacity-80">
+                                      ({connectionTestResult.latencyMs}ms)
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="mt-0.5">{connectionTestResult.message}</p>
+                              </div>
+                            )}
                           </div>
-                          <input
-                            type={showApiKey ? 'text' : 'password'}
-                            placeholder="sk-..."
-                            value={gatewayApiKey}
-                            onChange={e => {
-                              saveGatewayToLocalStorage({ apiKey: e.target.value });
-                              setConnectionTestResult(null);
-                            }}
-                            className="w-full bg-[#181c28] border border-[#262c3e] rounded-xl p-2 text-xs text-white font-mono placeholder-neutral-600 focus:outline-none focus:border-purple-500"
-                          />
                         </div>
-                      )}
-
-                      {/* Auto-save & Test button */}
-                      <div className="pt-1 space-y-2">
-                        <button
-                          type="button"
-                          onClick={handleTestAIConnection}
-                          disabled={isTestingConnection}
-                          className="w-full py-2 bg-purple-700 hover:bg-purple-600 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer"
-                        >
-                          <Zap className="w-3.5 h-3.5 fill-white" />
-                          <span>{isTestingConnection ? 'Testing Connection...' : 'Test Connection'}</span>
-                        </button>
-
-                        {connectionTestResult && (
-                          <div
-                            className={`p-2.5 rounded-xl text-[11px] leading-relaxed border ${
-                              connectionTestResult.success
-                                ? 'bg-emerald-950/60 border-emerald-800/50 text-emerald-300'
-                                : 'bg-rose-950/60 border-rose-800/50 text-rose-300'
-                            }`}
-                          >
-                            <div className="font-bold flex items-center gap-1">
-                              {connectionTestResult.success ? '✓ Operational' : '✕ Connection Issue'}
-                              {connectionTestResult.latencyMs !== undefined && (
-                                <span className="font-mono text-[10px] opacity-80">
-                                  ({connectionTestResult.latencyMs}ms)
-                                </span>
-                              )}
-                            </div>
-                            <p className="mt-0.5">{connectionTestResult.message}</p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
 
                 {/* 2. VOICE & AUDIO (KOKORO TTS) CARD */}
@@ -3059,149 +3417,549 @@ export const ChatView: React.FC<ChatViewProps> = ({
                       }`}>
                         {ttsConfig.enabled ? (KOKORO_VOICES.find(v => v.id === ttsConfig.voiceId)?.name || 'On') : 'Off'}
                       </span>
-                      <ChevronDown className={`w-3.5 h-3.5 text-neutral-400 transition-transform duration-200 ${openAccordions.voice ? 'rotate-180' : ''}`} />
+                      <ChevronDown className={`w-3.5 h-3.5 text-neutral-400 transition-transform duration-200 ${activeAccordion === 'voice' ? 'rotate-180' : ''}`} />
                     </div>
                   </button>
 
-                  {openAccordions.voice && (
-                    <div className="p-3.5 pt-1 space-y-3 border-t border-[#1a1d27]/70">
-                      {/* Master Enable Toggle */}
-                      <div className="flex items-center justify-between p-2.5 rounded-xl bg-[#161a28] border border-[#23293e]">
-                        <div>
-                          <div className="font-bold text-white text-xs">Enable AI Voice</div>
-                          <div className="text-[10px] text-neutral-400">Reads character dialogue during roleplay</div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => updateTtsConfig({ enabled: !ttsConfig.enabled })}
-                          className={`w-11 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors ${
-                            ttsConfig.enabled ? 'bg-pink-600 justify-end' : 'bg-neutral-700 justify-start'
-                          }`}
-                        >
-                          <motion.div layout className="w-4 h-4 rounded-full bg-white shadow-md" />
-                        </button>
-                      </div>
-
-                      {ttsConfig.enabled && (
-                        <>
-                          {/* Auto-play toggle */}
-                          <div className="flex items-center justify-between px-1">
-                            <span className="text-neutral-300 text-[11px]">Auto-play on new message</span>
-                            <input
-                              type="checkbox"
-                              checked={ttsConfig.autoPlay}
-                              onChange={e => updateTtsConfig({ autoPlay: e.target.checked })}
-                              className="accent-pink-500 rounded cursor-pointer"
-                            />
-                          </div>
-
-                          {/* Dialogue-only toggle */}
-                          <div className="flex items-center justify-between px-1">
+                  <AnimatePresence initial={false}>
+                    {activeAccordion === 'voice' && (
+                      <motion.div
+                        key="content-voice"
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.28, ease: [0.04, 0.62, 0.23, 0.98] }}
+                        className="overflow-hidden"
+                      >
+                        <div className="p-3.5 pt-1 space-y-3 border-t border-[#1a1d27]/70">
+                          {/* Master Enable Toggle */}
+                          <div className="flex items-center justify-between p-2.5 rounded-xl bg-[#161a28] border border-[#23293e]">
                             <div>
-                              <span className="text-neutral-300 text-[11px] block">Read dialogue only ("...")</span>
-                              <span className="text-[10px] text-neutral-500">Skips *actions* and scene descriptions</span>
+                              <div className="font-bold text-white text-xs">Enable AI Voice</div>
+                              <div className="text-[10px] text-neutral-400">Reads character dialogue during roleplay</div>
                             </div>
-                            <input
-                              type="checkbox"
-                              checked={ttsConfig.dialogueOnly}
-                              onChange={e => updateTtsConfig({ dialogueOnly: e.target.checked })}
-                              className="accent-pink-500 rounded cursor-pointer"
-                            />
+                            <button
+                              type="button"
+                              onClick={() => updateTtsConfig({ enabled: !ttsConfig.enabled })}
+                              className={`w-11 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors ${
+                                ttsConfig.enabled ? 'bg-pink-600 justify-end' : 'bg-neutral-700 justify-start'
+                              }`}
+                            >
+                              <motion.div layout className="w-4 h-4 rounded-full bg-white shadow-md" />
+                            </button>
                           </div>
 
-                          {/* Voice Profile Selector */}
-                          <div>
-                            <label className="text-neutral-400 block mb-1 text-[11px]">Kokoro Character Voice Archetype</label>
-                            <CustomSelect
-                              value={ttsConfig.voiceId}
-                              onChange={val => updateTtsConfig({ voiceId: val })}
-                              options={KOKORO_VOICES.map(v => ({
-                                value: v.id,
-                                label: `${v.name} (${v.archetype})`,
-                                description: v.description
-                              }))}
-                              className="bg-[#181c28] border-[#262c3e]"
-                            />
+                          {/* Kokoro Model Auto-Wire & Download Box */}
+                          <div className="p-3 rounded-xl bg-[#141824] border border-[#232b40] space-y-2.5">
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-white text-xs flex items-center gap-1.5">
+                                <Sparkles className="w-3.5 h-3.5 text-pink-400" />
+                                <span>Kokoro Neural AI Engine</span>
+                              </span>
+                              <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${
+                                ttsPlayback.kokoroProgress.status === 'ready'
+                                  ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-800/50'
+                                  : ttsPlayback.kokoroProgress.status === 'downloading'
+                                    ? 'bg-cyan-950/80 text-cyan-300 border border-cyan-800/50 animate-pulse'
+                                    : 'bg-amber-950/80 text-amber-300 border border-amber-800/50'
+                              }`}>
+                                {ttsPlayback.kokoroProgress.status === 'ready'
+                                  ? '✓ Ready • Local'
+                                  : ttsPlayback.kokoroProgress.status === 'downloading'
+                                    ? `${ttsPlayback.kokoroProgress.progress}% Downloading`
+                                    : 'Not Downloaded'}
+                              </span>
+                            </div>
+
+                            <p className="text-[11px] text-neutral-300 leading-relaxed">
+                              {ttsPlayback.kokoroProgress.status === 'ready'
+                                ? 'Kokoro-82M neural model is loaded and running 100% locally in your browser. All speech is synthesized privately offline.'
+                                : ttsPlayback.kokoroProgress.status === 'downloading'
+                                  ? ttsPlayback.kokoroProgress.text || 'Downloading Kokoro-82M neural network weights (~85 MB)...'
+                                  : 'Kokoro is an 82M open-weight neural TTS (~85 MB). Click below to download and auto-wire directly into Warden AI.'}
+                            </p>
+
+                            {/* Animated Download Progress Bar */}
+                            {ttsPlayback.kokoroProgress.status === 'downloading' && (
+                              <div className="space-y-1.5 pt-1">
+                                <div className="w-full bg-[#0c0e14] rounded-full h-2 overflow-hidden border border-[#232a3e]">
+                                  <div
+                                    className="bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-500 h-full transition-all duration-300 rounded-full"
+                                    style={{ width: `${Math.max(5, ttsPlayback.kokoroProgress.progress)}%` }}
+                                  />
+                                </div>
+                                <div className="flex justify-between text-[10px] text-neutral-400 font-mono">
+                                  <span>{ttsPlayback.kokoroProgress.text}</span>
+                                  <span className="text-pink-400 font-bold">{ttsPlayback.kokoroProgress.progress}%</span>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Download Action Buttons */}
+                            <div className="pt-1 space-y-1.5">
+                              {ttsPlayback.kokoroProgress.status !== 'ready' && ttsPlayback.kokoroProgress.status !== 'downloading' && (
+                                <button
+                                  type="button"
+                                  onClick={handleDownloadKokoro}
+                                  className="w-full py-2 bg-gradient-to-r from-pink-600 via-purple-600 to-indigo-600 hover:from-pink-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+                                >
+                                  <Download className="w-3.5 h-3.5" />
+                                  <span>Download & Auto-Wire Kokoro Model (~85 MB)</span>
+                                </button>
+                              )}
+
+                              {ttsPlayback.kokoroProgress.status === 'ready' && (
+                                <div className="flex items-center justify-between text-[11px] text-emerald-400 bg-emerald-950/40 p-2 rounded-lg border border-emerald-800/40 font-semibold">
+                                  <span className="flex items-center gap-1.5">
+                                    <Check className="w-3.5 h-3.5" />
+                                    <span>Kokoro-82M Active & Cached</span>
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={handleDownloadKokoro}
+                                    className="text-[10px] text-neutral-400 hover:text-white underline cursor-pointer"
+                                  >
+                                    Re-verify Cache
+                                  </button>
+                                </div>
+                              )}
+
+                              <button
+                                type="button"
+                                onClick={handleDownloadWardenFolder}
+                                className="w-full py-1 text-[10.5px] text-neutral-400 hover:text-neutral-200 transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                                title="Download raw model weights file for offline server usage"
+                              >
+                                <Download className="w-3 h-3 text-neutral-500" />
+                                <span>Save Model Weights file (Warden folder)</span>
+                              </button>
+                            </div>
                           </div>
 
-                          {/* Pitch Slider */}
-                          <div className="space-y-1">
-                            <div className="flex justify-between text-neutral-300 text-[11px]">
-                              <span>Pitch (Tone Depth)</span>
-                              <span className="font-mono text-pink-400">{ttsConfig.pitch.toFixed(2)}x</span>
-                            </div>
-                            <input
-                              type="range"
-                              min="0.6"
-                              max="1.4"
-                              step="0.05"
-                              value={ttsConfig.pitch}
-                              onChange={e => updateTtsConfig({ pitch: parseFloat(e.target.value) })}
-                              className="w-full accent-pink-500 cursor-pointer"
-                            />
-                            <div className="flex justify-between text-[9px] text-neutral-500 font-mono">
-                              <span>Deeper (MILF / Beast)</span>
-                              <span>Higher (Girlfriend)</span>
-                            </div>
-                          </div>
+                          {ttsConfig.enabled && (
+                            <>
+                              {/* Auto-play toggle */}
+                              <div className="flex items-center justify-between px-1">
+                                <span className="text-neutral-300 text-[11px]">Auto-play on new message</span>
+                                <input
+                                  type="checkbox"
+                                  checked={ttsConfig.autoPlay}
+                                  onChange={e => updateTtsConfig({ autoPlay: e.target.checked })}
+                                  className="accent-pink-500 rounded cursor-pointer"
+                                />
+                              </div>
 
-                          {/* Speed Slider */}
-                          <div className="space-y-1">
-                            <div className="flex justify-between text-neutral-300 text-[11px]">
-                              <span>Speech Speed</span>
-                              <span className="font-mono text-pink-400">{ttsConfig.speed.toFixed(2)}x</span>
-                            </div>
-                            <input
-                              type="range"
-                              min="0.7"
-                              max="1.5"
-                              step="0.05"
-                              value={ttsConfig.speed}
-                              onChange={e => updateTtsConfig({ speed: parseFloat(e.target.value) })}
-                              className="w-full accent-pink-500 cursor-pointer"
-                            />
-                          </div>
+                              {/* Dialogue-only toggle */}
+                              <div className="flex items-center justify-between px-1">
+                                <div>
+                                  <span className="text-neutral-300 text-[11px] block">Read dialogue only ("...")</span>
+                                  <span className="text-[10px] text-neutral-500">Skips *actions* and scene descriptions</span>
+                                </div>
+                                <input
+                                  type="checkbox"
+                                  checked={ttsConfig.dialogueOnly}
+                                  onChange={e => updateTtsConfig({ dialogueOnly: e.target.checked })}
+                                  className="accent-pink-500 rounded cursor-pointer"
+                                />
+                              </div>
 
-                          {/* Engine Type */}
-                          <div>
-                            <label className="text-neutral-400 block mb-1 text-[11px]">Speech Engine</label>
-                            <CustomSelect
-                              value={ttsConfig.engine}
-                              onChange={(val: any) => updateTtsConfig({ engine: val })}
-                              options={[
-                                { value: 'browser', label: 'Built-in Native Web Speech', description: 'Zero MB download, 100% offline & instant' },
-                                { value: 'kokoro-endpoint', label: 'Kokoro Server Endpoint (OpenAI TTS format)', description: 'Connect local Kokoro-FastAPI or cloud endpoint' }
-                              ]}
-                              className="bg-[#181c28] border-[#262c3e]"
-                            />
-                          </div>
+                              {/* Voice Profile Selector */}
+                              <div>
+                                <label className="text-neutral-400 block mb-1 text-[11px]">Kokoro Character Voice Archetype</label>
+                                <CustomSelect
+                                  value={ttsConfig.voiceId}
+                                  onChange={val => updateTtsConfig({ voiceId: val })}
+                                  options={KOKORO_VOICES.map(v => ({
+                                    value: v.id,
+                                    label: `${v.name} (${v.archetype})`,
+                                    description: v.description
+                                  }))}
+                                  className="bg-[#181c28] border-[#262c3e]"
+                                />
+                              </div>
 
-                          {ttsConfig.engine === 'kokoro-endpoint' && (
-                            <div>
-                              <label className="text-neutral-400 block mb-1 text-[11px]">Kokoro Endpoint URL</label>
-                              <input
-                                type="text"
-                                placeholder="http://localhost:8880/v1/audio/speech"
-                                value={ttsConfig.kokoroEndpoint}
-                                onChange={e => updateTtsConfig({ kokoroEndpoint: e.target.value })}
-                                className="w-full bg-[#181c28] border border-[#262c3e] rounded-xl p-2 text-xs text-white font-mono placeholder-neutral-600 focus:outline-none focus:border-pink-500"
-                              />
-                            </div>
+                              {/* Pitch Slider */}
+                              <div className="space-y-1">
+                                <div className="flex justify-between text-neutral-300 text-[11px]">
+                                  <span>Pitch (Tone Depth)</span>
+                                  <span className="font-mono text-pink-400">{ttsConfig.pitch.toFixed(2)}x</span>
+                                </div>
+                                <input
+                                  type="range"
+                                  min="0.6"
+                                  max="1.4"
+                                  step="0.05"
+                                  value={ttsConfig.pitch}
+                                  onChange={e => updateTtsConfig({ pitch: parseFloat(e.target.value) })}
+                                  onTouchStart={e => e.stopPropagation()}
+                                  onTouchMove={e => e.stopPropagation()}
+                                  onTouchEnd={e => e.stopPropagation()}
+                                  className="w-full accent-pink-500 cursor-pointer no-swipe"
+                                />
+                                <div className="flex justify-between text-[9px] text-neutral-500 font-mono">
+                                  <span>Deeper (MILF / Beast)</span>
+                                  <span>Higher (Girlfriend)</span>
+                                </div>
+                              </div>
+
+                              {/* Speed Slider */}
+                              <div className="space-y-1">
+                                <div className="flex justify-between text-neutral-300 text-[11px]">
+                                  <span>Speech Speed</span>
+                                  <span className="font-mono text-pink-400">{ttsConfig.speed.toFixed(2)}x</span>
+                                </div>
+                                <input
+                                  type="range"
+                                  min="0.7"
+                                  max="1.5"
+                                  step="0.05"
+                                  value={ttsConfig.speed}
+                                  onChange={e => updateTtsConfig({ speed: parseFloat(e.target.value) })}
+                                  onTouchStart={e => e.stopPropagation()}
+                                  onTouchMove={e => e.stopPropagation()}
+                                  onTouchEnd={e => e.stopPropagation()}
+                                  className="w-full accent-pink-500 cursor-pointer no-swipe"
+                                />
+                              </div>
+
+                              {/* Engine Type */}
+                              <div>
+                                <label className="text-neutral-400 block mb-1 text-[11px]">Speech Engine Priority</label>
+                                <CustomSelect
+                                  value={ttsConfig.engine}
+                                  onChange={(val: any) => updateTtsConfig({ engine: val })}
+                                  options={[
+                                    { value: 'kokoro-local', label: 'Local In-Browser Kokoro AI (Recommended)', description: 'Runs 100% locally via WebAssembly with zero latency' },
+                                    { value: 'browser', label: 'Native Device Speech (Instant Fallback)', description: 'Uses built-in OS speech voices' },
+                                    { value: 'kokoro-endpoint', label: 'Custom Kokoro Server Endpoint', description: 'Connect external Kokoro-FastAPI (/v1/audio/speech)' }
+                                  ]}
+                                  className="bg-[#181c28] border-[#262c3e]"
+                                />
+                              </div>
+
+                              {ttsConfig.engine === 'kokoro-endpoint' && (
+                                <div>
+                                  <label className="text-neutral-400 block mb-1 text-[11px]">Kokoro Endpoint URL</label>
+                                  <input
+                                    type="text"
+                                    placeholder="http://localhost:8880/v1/audio/speech"
+                                    value={ttsConfig.kokoroEndpoint}
+                                    onChange={e => updateTtsConfig({ kokoroEndpoint: e.target.value })}
+                                    className="w-full bg-[#181c28] border border-[#262c3e] rounded-xl p-2 text-xs text-white font-mono placeholder-neutral-600 focus:outline-none focus:border-pink-500"
+                                  />
+                                </div>
+                              )}
+
+                              {/* Test Voice Button */}
+                              <button
+                                type="button"
+                                onClick={handleTestVoice}
+                                disabled={ttsPlayback.isSynthesizing && ttsPlayback.synthesizingMessageId === 'tts-test-sample'}
+                                className="w-full py-2 bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-80"
+                              >
+                                {ttsPlayback.isSynthesizing && ttsPlayback.synthesizingMessageId === 'tts-test-sample' ? (
+                                  <>
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                    <span>Synthesizing Voice Sample...</span>
+                                  </>
+                                ) : ttsPlayback.isSpeaking && ttsPlayback.currentMessageId === 'tts-test-sample' ? (
+                                  <>
+                                    <Square className="w-3.5 h-3.5 fill-current" />
+                                    <span>Stop Voice Sample</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Play className="w-3.5 h-3.5 fill-current" />
+                                    <span>Listen to Voice Sample</span>
+                                  </>
+                                )}
+                              </button>
+                            </>
                           )}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
 
-                          {/* Test Voice Button */}
-                          <button
-                            type="button"
-                            onClick={handleTestVoice}
-                            className="w-full py-2 bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
-                          >
-                            <Play className="w-3.5 h-3.5 fill-current" />
-                            <span>Listen to Voice Sample</span>
-                          </button>
-                        </>
-                      )}
+                {/* 2.5 SCENE ILLUSTRATION / IMAGE GENERATOR CARD */}
+                <div className="bg-[#12151e] border border-[#1e2330] rounded-2xl overflow-hidden transition-all">
+                  <button
+                    type="button"
+                    onClick={() => toggleAccordion('imageGen')}
+                    className="w-full p-3.5 flex items-center justify-between hover:bg-[#161a26] transition-colors cursor-pointer select-none text-left"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Palette className="w-4 h-4 text-cyan-400 shrink-0" />
+                      <span className="font-bold text-white text-xs">Scene Illustration & Image Gen</span>
                     </div>
-                  )}
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                        imageGenConfig.enabled
+                          ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+                          : 'bg-neutral-800 text-neutral-400'
+                      }`}>
+                        {imageGenConfig.enabled ? (IMAGE_STYLE_OPTIONS.find(s => s.id === imageGenConfig.style)?.label.split(' ')[0] || 'Anime') : 'Off'}
+                      </span>
+                      <ChevronDown className={`w-3.5 h-3.5 text-neutral-400 transition-transform duration-200 ${activeAccordion === 'imageGen' ? 'rotate-180' : ''}`} />
+                    </div>
+                  </button>
+
+                  <AnimatePresence initial={false}>
+                    {activeAccordion === 'imageGen' && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                      >
+                        <div className="p-3.5 pt-0 space-y-3.5 border-t border-[#1e2330]/60 text-xs">
+                          {/* Enable Toggle */}
+                          <div className="flex items-center justify-between py-1">
+                            <div>
+                              <span className="text-neutral-200 font-semibold block text-xs">Scene Illustration</span>
+                              <span className="text-[10px] text-neutral-400">Illustrate roleplay situations visually</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => updateImageGenConfig({ enabled: !imageGenConfig.enabled })}
+                              className={`w-10 h-5 flex items-center rounded-full p-0.5 transition-colors cursor-pointer ${
+                                imageGenConfig.enabled ? 'bg-cyan-600 justify-end' : 'bg-neutral-700 justify-start'
+                              }`}
+                            >
+                              <motion.div
+                                layout
+                                className="w-4 h-4 rounded-full bg-white shadow-sm"
+                              />
+                            </button>
+                          </div>
+
+                          {imageGenConfig.enabled && (
+                            <>
+                              {/* Provider selection */}
+                              <div className="space-y-1">
+                                <label className="text-[10px] uppercase font-bold text-neutral-400 tracking-wider">
+                                  Image API Provider
+                                </label>
+                                <select
+                                  value={imageGenConfig.provider}
+                                  onChange={e => {
+                                    const p = e.target.value as ImageGenProvider;
+                                    let nextModel = imageGenConfig.model;
+                                    if (p === 'pollinations' && nextModel !== 'flux-anime' && nextModel !== 'flux' && nextModel !== 'turbo' && nextModel !== 'any-dark') {
+                                      nextModel = 'flux-anime';
+                                    } else if (p === 'openai' && (!nextModel || nextModel === 'flux-anime')) {
+                                      nextModel = 'dall-e-3';
+                                    } else if (p === 'custom' && (nextModel === 'flux-anime' || nextModel === 'dall-e-3')) {
+                                      nextModel = 'flux-schnell';
+                                    }
+                                    updateImageGenConfig({ provider: p, model: nextModel });
+                                  }}
+                                  className="w-full bg-[#0a0c14] border border-[#2b3145] rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500 cursor-pointer"
+                                >
+                                  <option value="pollinations">Pollinations AI (Free / No Key Required)</option>
+                                  <option value="openai">OpenAI (DALL-E 3)</option>
+                                  <option value="custom">Custom OpenAI-Compatible Endpoint</option>
+                                </select>
+                              </div>
+
+                              {/* Model Selection */}
+                              {imageGenConfig.provider === 'pollinations' && (
+                                <div className="space-y-1">
+                                  <label className="text-[10px] uppercase font-bold text-neutral-400 tracking-wider">
+                                    Diffusion Model
+                                  </label>
+                                  <select
+                                    value={imageGenConfig.model}
+                                    onChange={e => updateImageGenConfig({ model: e.target.value })}
+                                    className="w-full bg-[#0a0c14] border border-[#2b3145] rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500 cursor-pointer"
+                                  >
+                                    <option value="flux-anime">Flux Anime (Recommended for Anime & Roleplay)</option>
+                                    <option value="flux">Flux (High Detail General)</option>
+                                    <option value="turbo">Turbo (Ultra Fast)</option>
+                                    <option value="any-dark">Any Dark (Moody / Dark Fantasy)</option>
+                                  </select>
+                                </div>
+                              )}
+
+                              {imageGenConfig.provider === 'openai' && (
+                                <div className="space-y-1">
+                                  <label className="text-[10px] uppercase font-bold text-neutral-400 tracking-wider">
+                                    Model Name
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={imageGenConfig.model || ''}
+                                    onChange={e => updateImageGenConfig({ model: e.target.value })}
+                                    placeholder="dall-e-3"
+                                    className="w-full bg-[#0a0c14] border border-[#2b3145] rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500 font-mono"
+                                  />
+                                  <p className="text-[10px] text-neutral-500">
+                                    Default: dall-e-3 (atau dall-e-2)
+                                  </p>
+                                </div>
+                              )}
+
+                              {imageGenConfig.provider === 'custom' && (
+                                <div className="space-y-1">
+                                  <label className="text-[10px] uppercase font-bold text-neutral-400 tracking-wider">
+                                    Model Name
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={imageGenConfig.model || ''}
+                                    onChange={e => updateImageGenConfig({ model: e.target.value })}
+                                    placeholder="flux-schnell"
+                                    className="w-full bg-[#0a0c14] border border-[#2b3145] rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500 font-mono"
+                                  />
+                                  <div className="flex flex-wrap gap-1 mt-1">
+                                    {['flux-schnell', 'flux-1.1-pro', 'recraft-v3', 'dall-e-3'].map(m => (
+                                      <button
+                                        key={m}
+                                        type="button"
+                                        onClick={() => updateImageGenConfig({ model: m })}
+                                        className={`px-2 py-0.5 rounded text-[10px] font-mono border transition-all cursor-pointer ${
+                                          imageGenConfig.model === m
+                                            ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50'
+                                            : 'bg-[#151924] text-neutral-400 border-neutral-700 hover:text-white hover:border-neutral-500'
+                                        }`}
+                                      >
+                                        {m}
+                                      </button>
+                                    ))}
+                                  </div>
+                                  <p className="text-[10px] text-neutral-500">
+                                    Model yang diizinkan Anoman: flux-schnell, flux-1.1-pro, recraft-v3
+                                  </p>
+                                </div>
+                              )}
+
+                              {/* AI Art Director (Prompt Enhancer) Toggle */}
+                              <div className="p-2.5 rounded-xl bg-[#0a0c14] border border-[#1e2330] flex items-center justify-between gap-3">
+                                <div className="space-y-0.5">
+                                  <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                                    <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                                    <span>AI Art Director (Prompt Enhancer)</span>
+                                  </div>
+                                  <p className="text-[10px] text-neutral-400 leading-relaxed">
+                                    Menulis ulang prompt secara otomatis menjadi instruksi sinematik dengan komposisi, pencahayaan, dan detail visual tinggi (seperti di Anoman).
+                                  </p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => updateImageGenConfig({ enhance: imageGenConfig.enhance === false ? true : false })}
+                                  className={`w-9 h-5 shrink-0 flex items-center rounded-full p-0.5 transition-colors cursor-pointer ${
+                                    imageGenConfig.enhance !== false ? 'bg-amber-600 justify-end' : 'bg-neutral-700 justify-start'
+                                  }`}
+                                  title="Toggle AI Art Director"
+                                >
+                                  <motion.div layout className="w-4 h-4 rounded-full bg-white shadow-sm" />
+                                </button>
+                              </div>
+
+                              {/* Style Preset */}
+                              <div className="space-y-1">
+                                <label className="text-[10px] uppercase font-bold text-neutral-400 tracking-wider">
+                                  Visual Style Preset (Default: Anime)
+                                </label>
+                                <div className="grid grid-cols-2 gap-1.5">
+                                  {IMAGE_STYLE_OPTIONS.map(styleOpt => (
+                                    <button
+                                      key={styleOpt.id}
+                                      type="button"
+                                      onClick={() => updateImageGenConfig({ style: styleOpt.id })}
+                                      className={`p-2 rounded-xl border text-left transition-all cursor-pointer ${
+                                        imageGenConfig.style === styleOpt.id
+                                          ? 'border-cyan-500 bg-cyan-950/40 text-cyan-200'
+                                          : 'border-[#1e2330] bg-[#0c0e14] text-neutral-400 hover:text-white hover:border-[#2b3145]'
+                                      }`}
+                                    >
+                                      <div className="text-[11px] font-bold truncate">{styleOpt.label}</div>
+                                      <div className="text-[9px] text-neutral-500 line-clamp-1 mt-0.5">{styleOpt.description}</div>
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+
+                              {/* Aspect Ratio */}
+                              <div className="space-y-1">
+                                <label className="text-[10px] uppercase font-bold text-neutral-400 tracking-wider">
+                                  Aspect Ratio
+                                </label>
+                                <div className="grid grid-cols-3 gap-1.5">
+                                  {[
+                                    { id: 'portrait', label: 'Portrait (9:16)' },
+                                    { id: 'square', label: 'Square (1:1)' },
+                                    { id: 'landscape', label: 'Landscape (16:9)' }
+                                  ].map(ratio => (
+                                    <button
+                                      key={ratio.id}
+                                      type="button"
+                                      onClick={() => updateImageGenConfig({ aspectRatio: ratio.id as any })}
+                                      className={`py-1.5 px-2 rounded-xl text-center text-[10px] font-bold border transition-all cursor-pointer ${
+                                        imageGenConfig.aspectRatio === ratio.id
+                                          ? 'border-cyan-500 bg-cyan-950/40 text-cyan-300'
+                                          : 'border-[#1e2330] bg-[#0c0e14] text-neutral-400 hover:text-white'
+                                      }`}
+                                    >
+                                      {ratio.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+
+                              {/* API Key and Base URL (If OpenAI or Custom) */}
+                              {(imageGenConfig.provider === 'openai' || imageGenConfig.provider === 'custom') && (
+                                <div className="space-y-2 pt-1 border-t border-[#1e2330]">
+                                  <div className="space-y-1">
+                                    <label className="text-[10px] uppercase font-bold text-neutral-400 tracking-wider">
+                                      API Key
+                                    </label>
+                                    <input
+                                      type="password"
+                                      value={imageGenConfig.apiKey}
+                                      onChange={e => updateImageGenConfig({ apiKey: e.target.value })}
+                                      placeholder="sk-..."
+                                      className="w-full bg-[#0a0c14] border border-[#2b3145] rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500 font-mono"
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <label className="text-[10px] uppercase font-bold text-neutral-400 tracking-wider">
+                                      Base URL (Optional)
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={imageGenConfig.baseUrl}
+                                      onChange={e => updateImageGenConfig({ baseUrl: e.target.value })}
+                                      placeholder="https://api.openai.com/v1"
+                                      className="w-full bg-[#0a0c14] border border-[#2b3145] rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500 font-mono"
+                                    />
+                                    <p className="text-[10px] text-neutral-500">
+                                      Bisa diisi base URL (contoh: https://api.anoman.io/v1) atau full endpoint (/images/generations)
+                                    </p>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Custom Style Keywords */}
+                              <div className="space-y-1">
+                                <label className="text-[10px] uppercase font-bold text-neutral-400 tracking-wider">
+                                  Custom Style Modifiers (Optional)
+                                </label>
+                                <input
+                                  type="text"
+                                  value={imageGenConfig.customStylePrompt || ''}
+                                  onChange={e => updateImageGenConfig({ customStylePrompt: e.target.value })}
+                                  placeholder="e.g. pastel colors, Kyoto studio lighting, retro anime"
+                                  className="w-full bg-[#0a0c14] border border-[#2b3145] rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500"
+                                />
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
 
                 {/* 3. ROLEPLAY PERSONA, SCENARIOS & CHATS CARD */}
@@ -3219,130 +3977,141 @@ export const ChatView: React.FC<ChatViewProps> = ({
                       <span className="text-[10px] text-indigo-300 font-medium truncate max-w-[120px]">
                         {currentPersona?.name || 'Persona'}
                       </span>
-                      <ChevronDown className={`w-3.5 h-3.5 text-neutral-400 transition-transform duration-200 ${openAccordions.persona ? 'rotate-180' : ''}`} />
+                      <ChevronDown className={`w-3.5 h-3.5 text-neutral-400 transition-transform duration-200 ${activeAccordion === 'persona' ? 'rotate-180' : ''}`} />
                     </div>
                   </button>
 
-                  {openAccordions.persona && (
-                    <div className="p-3.5 pt-1 space-y-3 border-t border-[#1a1d27]/70">
-                      {/* Active Persona dropdown */}
-                      <div>
-                        <label className="text-neutral-400 font-semibold block mb-1 text-[11px]">Active Persona</label>
-                        <CustomSelect
-                          value={activePersonaId}
-                          onChange={newId => handleSwitchPersona(newId)}
-                          options={allPersonas.map(p => ({
-                            value: p.id,
-                            label: p.name,
-                            description: p.shortDescription ? p.shortDescription.slice(0, 50) + (p.shortDescription.length > 50 ? '...' : '') : undefined
-                          }))}
-                          className="bg-[#181c28] border-[#262c3e]"
-                        />
-                      </div>
+                  <AnimatePresence initial={false}>
+                    {activeAccordion === 'persona' && (
+                      <motion.div
+                        key="content-persona"
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.28, ease: [0.04, 0.62, 0.23, 0.98] }}
+                        className="overflow-hidden"
+                      >
+                        <div className="p-3.5 pt-1 space-y-3 border-t border-[#1a1d27]/70">
+                          {/* Active Persona dropdown */}
+                          <div>
+                            <label className="text-neutral-400 font-semibold block mb-1 text-[11px]">Active Persona</label>
+                            <CustomSelect
+                              value={activePersonaId}
+                              onChange={newId => handleSwitchPersona(newId)}
+                              options={allPersonas.map(p => ({
+                                value: p.id,
+                                label: p.name,
+                                description: p.shortDescription ? p.shortDescription.slice(0, 50) + (p.shortDescription.length > 50 ? '...' : '') : undefined
+                              }))}
+                              className="bg-[#181c28] border-[#262c3e]"
+                            />
+                          </div>
 
-                      {/* Active Scenario dropdown */}
-                      <div>
-                        <label className="text-neutral-400 font-semibold block mb-1 text-[11px]">Active Scenario</label>
-                        <CustomSelect
-                          value={activeScenarioId}
-                          onChange={newId => handleSwitchScenario(newId, messages.length <= 1)}
-                          options={(character.scenarios || []).map(sc => ({
-                            value: sc.id,
-                            label: sc.title,
-                            description: sc.description ? sc.description.slice(0, 50) + (sc.description.length > 50 ? '...' : '') : undefined
-                          }))}
-                          className="bg-[#181c28] border-[#262c3e]"
-                        />
-                        {messages.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => handleSwitchScenario(activeScenarioId, true)}
-                            className="mt-2 w-full py-1.5 px-3 rounded-xl bg-purple-600/20 hover:bg-purple-600/35 border border-purple-500/35 text-purple-200 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95"
-                            title="Reset current conversation to this scenario's opening greeting"
-                          >
-                            <RotateCcw className="w-3.5 h-3.5 text-purple-400" />
-                            <span>Reset Chat to This Scenario Greeting</span>
-                          </button>
-                        )}
-                      </div>
+                          {/* Active Scenario dropdown */}
+                          <div>
+                            <label className="text-neutral-400 font-semibold block mb-1 text-[11px]">Active Scenario</label>
+                            <CustomSelect
+                              value={activeScenarioId}
+                              onChange={newId => handleSwitchScenario(newId, messages.length <= 1)}
+                              options={(character.scenarios || []).map(sc => ({
+                                value: sc.id,
+                                label: sc.title,
+                                description: sc.description ? sc.description.slice(0, 50) + (sc.description.length > 50 ? '...' : '') : undefined
+                              }))}
+                              className="bg-[#181c28] border-[#262c3e]"
+                            />
+                            {messages.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => handleSwitchScenario(activeScenarioId, true)}
+                                className="mt-2 w-full py-1.5 px-3 rounded-xl bg-purple-600/20 hover:bg-purple-600/35 border border-purple-500/35 text-purple-200 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95"
+                                title="Reset current conversation to this scenario's opening greeting"
+                              >
+                                <RotateCcw className="w-3.5 h-3.5 text-purple-400" />
+                                <span>Reset Chat to This Scenario Greeting</span>
+                              </button>
+                            )}
+                          </div>
 
-                      {/* Multi-chat session switcher */}
-                      <div className="pt-2 border-t border-[#1a1d27] space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-white flex items-center gap-1.5 text-xs">
-                            <MessageSquare className="w-3.5 h-3.5 text-purple-400" />
-                            <span>Chat Sessions ({allConversations.filter(c => c.characterId === character.id).length || 1})</span>
-                          </span>
-                        </div>
+                          {/* Multi-chat session switcher */}
+                          <div className="pt-2 border-t border-[#1a1d27] space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-white flex items-center gap-1.5 text-xs">
+                                <MessageSquare className="w-3.5 h-3.5 text-purple-400" />
+                                <span>Chat Sessions ({allConversations.filter(c => c.characterId === character.id).length || 1})</span>
+                              </span>
+                            </div>
 
-                        {onStartNewChat && (
-                          <button
-                            onClick={() => {
-                              setRightPanel('hidden');
-                              onStartNewChat(character);
-                            }}
-                            className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-purple-700 to-indigo-600 hover:from-purple-600 hover:to-indigo-500 text-white font-bold flex items-center justify-center gap-1.5 text-xs shadow-sm transition-all cursor-pointer active:scale-95"
-                          >
-                            <Plus className="w-3.5 h-3.5" />
-                            <span>Start Another New Chat</span>
-                          </button>
-                        )}
+                            {onStartNewChat && (
+                              <button
+                                onClick={() => {
+                                  setRightPanel('hidden');
+                                  onStartNewChat(character);
+                                }}
+                                className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-purple-700 to-indigo-600 hover:from-purple-600 hover:to-indigo-500 text-white font-bold flex items-center justify-center gap-1.5 text-xs shadow-sm transition-all cursor-pointer active:scale-95"
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                                <span>Start Another New Chat</span>
+                              </button>
+                            )}
 
-                        <div className="space-y-1 pt-1 max-h-36 overflow-y-auto">
-                          {[...allConversations]
-                            .filter(c => c.characterId === character.id)
-                            .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime())
-                            .map(conv => {
-                              const isSelected = conv.id === conversation.id;
-                              const convPersona = allPersonas.find(p => p.id === conv.personaId) || currentPersona;
-                              const lastMsg = conv.messages[conv.messages.length - 1];
-                              const sneakPeek = lastMsg
-                                ? lastMsg.content.replace(/[*#_`]/g, '').trim().slice(0, 60) + (lastMsg.content.length > 60 ? '...' : '')
-                                : 'No messages yet';
+                            <div className="space-y-1 pt-1 max-h-36 overflow-y-auto">
+                              {[...allConversations]
+                                .filter(c => c.characterId === character.id)
+                                .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime())
+                                .map(conv => {
+                                  const isSelected = conv.id === conversation.id;
+                                  const convPersona = allPersonas.find(p => p.id === conv.personaId) || currentPersona;
+                                  const lastMsg = conv.messages[conv.messages.length - 1];
+                                  const sneakPeek = lastMsg
+                                    ? lastMsg.content.replace(/[*#_`]/g, '').trim().slice(0, 60) + (lastMsg.content.length > 60 ? '...' : '')
+                                    : 'No messages yet';
 
-                              return (
-                                <div
-                                  key={conv.id}
-                                  onClick={() => {
-                                    setRightPanel('hidden');
-                                    onSelectConversation && onSelectConversation(conv);
-                                  }}
-                                  className={`p-2 rounded-xl cursor-pointer transition-colors flex items-center justify-between gap-2 ${
-                                    isSelected
-                                      ? 'bg-purple-900/30 text-white border border-purple-500/40'
-                                      : 'bg-[#0d1017] hover:bg-[#151926] text-neutral-300'
-                                  }`}
-                                >
-                                  <div className="min-w-0 flex-1">
-                                    <div className="flex items-center gap-1 text-[11px] font-bold truncate">
-                                      <span>{convPersona?.name ? `as ${convPersona.name}` : (conv.title || 'Chat')}</span>
-                                      {isSelected && <span className="text-[9px] text-purple-400 font-mono">(active)</span>}
+                                  return (
+                                    <div
+                                      key={conv.id}
+                                      onClick={() => {
+                                        setRightPanel('hidden');
+                                        onSelectConversation && onSelectConversation(conv);
+                                      }}
+                                      className={`p-2 rounded-xl cursor-pointer transition-colors flex items-center justify-between gap-2 ${
+                                        isSelected
+                                          ? 'bg-purple-900/30 text-white border border-purple-500/40'
+                                          : 'bg-[#0d1017] hover:bg-[#151926] text-neutral-300'
+                                      }`}
+                                    >
+                                      <div className="min-w-0 flex-1">
+                                        <div className="flex items-center gap-1 text-[11px] font-bold truncate">
+                                          <span>{convPersona?.name ? `as ${convPersona.name}` : (conv.title || 'Chat')}</span>
+                                          {isSelected && <span className="text-[9px] text-purple-400 font-mono">(active)</span>}
+                                        </div>
+                                        <p className="text-[10px] text-neutral-400 truncate">{sneakPeek}</p>
+                                      </div>
+                                      <div className="flex items-center gap-1.5 shrink-0">
+                                        <span className="text-[9px] font-mono text-neutral-500">{conv.messages.length} msgs</span>
+                                        {onDeleteConversation && (
+                                          <button
+                                            type="button"
+                                            onClick={e => {
+                                              e.stopPropagation();
+                                              onDeleteConversation(conv.id);
+                                            }}
+                                            className="p-1 text-neutral-400 hover:text-rose-400 active:text-rose-400 rounded-md hover:bg-rose-500/15 transition-all cursor-pointer"
+                                            title="Delete this chat session"
+                                          >
+                                            <Trash2 className="w-3 h-3" />
+                                          </button>
+                                        )}
+                                      </div>
                                     </div>
-                                    <p className="text-[10px] text-neutral-400 truncate">{sneakPeek}</p>
-                                  </div>
-                                  <div className="flex items-center gap-1.5 shrink-0">
-                                    <span className="text-[9px] font-mono text-neutral-500">{conv.messages.length} msgs</span>
-                                    {onDeleteConversation && (
-                                      <button
-                                        type="button"
-                                        onClick={e => {
-                                          e.stopPropagation();
-                                          onDeleteConversation(conv.id);
-                                        }}
-                                        className="p-1 text-neutral-400 hover:text-rose-400 active:text-rose-400 rounded-md hover:bg-rose-500/15 transition-all cursor-pointer"
-                                        title="Delete this chat session"
-                                      >
-                                        <Trash2 className="w-3 h-3" />
-                                      </button>
-                                    )}
-                                  </div>
-                                </div>
-                              );
-                            })}
+                                  );
+                                })}
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    </div>
-                  )}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
 
                 {/* 4. GENERATION TUNING CARD */}
@@ -3360,45 +4129,62 @@ export const ChatView: React.FC<ChatViewProps> = ({
                       <span className="text-[10px] text-neutral-400 font-mono">
                         T: {temperature} • {maxTokens} tok
                       </span>
-                      <ChevronDown className={`w-3.5 h-3.5 text-neutral-400 transition-transform duration-200 ${openAccordions.tuning ? 'rotate-180' : ''}`} />
+                      <ChevronDown className={`w-3.5 h-3.5 text-neutral-400 transition-transform duration-200 ${activeAccordion === 'tuning' ? 'rotate-180' : ''}`} />
                     </div>
                   </button>
 
-                  {openAccordions.tuning && (
-                    <div className="p-3.5 pt-1 space-y-3 border-t border-[#1a1d27]/70">
-                      <div className="space-y-1">
-                        <div className="flex justify-between text-neutral-300 text-[11px]">
-                          <span>Temperature (Creativity)</span>
-                          <span className="font-mono text-purple-400">{temperature}</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="0"
-                          max="1.5"
-                          step="0.05"
-                          value={temperature}
-                          onChange={e => setTemperature(parseFloat(e.target.value))}
-                          className="w-full accent-purple-500 cursor-pointer"
-                        />
-                      </div>
+                  <AnimatePresence initial={false}>
+                    {activeAccordion === 'tuning' && (
+                      <motion.div
+                        key="content-tuning"
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.28, ease: [0.04, 0.62, 0.23, 0.98] }}
+                        className="overflow-hidden"
+                      >
+                        <div className="p-3.5 pt-1 space-y-3 border-t border-[#1a1d27]/70">
+                          <div className="space-y-1">
+                            <div className="flex justify-between text-neutral-300 text-[11px]">
+                              <span>Temperature (Creativity)</span>
+                              <span className="font-mono text-purple-400">{temperature}</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="0"
+                              max="1.5"
+                              step="0.05"
+                              value={temperature}
+                              onChange={e => setTemperature(parseFloat(e.target.value))}
+                              onTouchStart={e => e.stopPropagation()}
+                              onTouchMove={e => e.stopPropagation()}
+                              onTouchEnd={e => e.stopPropagation()}
+                              className="w-full accent-purple-500 cursor-pointer no-swipe"
+                            />
+                          </div>
 
-                      <div className="space-y-1">
-                        <div className="flex justify-between text-neutral-300 text-[11px]">
-                          <span>Max Response Tokens</span>
-                          <span className="font-mono text-purple-400">{maxTokens}</span>
+                          <div className="space-y-1">
+                            <div className="flex justify-between text-neutral-300 text-[11px]">
+                              <span>Max Response Tokens</span>
+                              <span className="font-mono text-purple-400">{maxTokens}</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="256"
+                              max="8192"
+                              step="128"
+                              value={maxTokens}
+                              onChange={e => setMaxTokens(parseInt(e.target.value))}
+                              onTouchStart={e => e.stopPropagation()}
+                              onTouchMove={e => e.stopPropagation()}
+                              onTouchEnd={e => e.stopPropagation()}
+                              className="w-full accent-purple-500 cursor-pointer no-swipe"
+                            />
+                          </div>
                         </div>
-                        <input
-                          type="range"
-                          min="256"
-                          max="8192"
-                          step="128"
-                          value={maxTokens}
-                          onChange={e => setMaxTokens(parseInt(e.target.value))}
-                          className="w-full accent-purple-500 cursor-pointer"
-                        />
-                      </div>
-                    </div>
-                  )}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
 
                 {/* 5. CUSTOM PROMPT & BOT RULES CARD */}
@@ -3420,90 +4206,101 @@ export const ChatView: React.FC<ChatViewProps> = ({
                       }`}>
                         {customPrompt ? '1 Rule Active' : 'Default'}
                       </span>
-                      <ChevronDown className={`w-3.5 h-3.5 text-neutral-400 transition-transform duration-200 ${openAccordions.prompt ? 'rotate-180' : ''}`} />
+                      <ChevronDown className={`w-3.5 h-3.5 text-neutral-400 transition-transform duration-200 ${activeAccordion === 'prompt' ? 'rotate-180' : ''}`} />
                     </div>
                   </button>
 
-                  {openAccordions.prompt && (
-                    <div className="p-3.5 pt-1 space-y-3 border-t border-[#1a1d27]/70">
-                      {/* Preset Selector */}
-                      <div className="space-y-1.5 bg-[#141724] p-2.5 rounded-xl border border-[#222738]">
-                        <div className="flex items-center justify-between text-[11px]">
-                          <span className="text-neutral-400 font-semibold">Rules Preset</span>
-                          <button
-                            type="button"
-                            onClick={() => setIsSavingPreset(!isSavingPreset)}
-                            className="text-purple-400 hover:text-purple-300 font-semibold text-[10px] cursor-pointer"
-                          >
-                            {isSavingPreset ? 'Cancel' : '+ Save as Preset'}
-                          </button>
-                        </div>
+                  <AnimatePresence initial={false}>
+                    {activeAccordion === 'prompt' && (
+                      <motion.div
+                        key="content-prompt"
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.28, ease: [0.04, 0.62, 0.23, 0.98] }}
+                        className="overflow-hidden"
+                      >
+                        <div className="p-3.5 pt-1 space-y-3 border-t border-[#1a1d27]/70">
+                          {/* Preset Selector */}
+                          <div className="space-y-1.5 bg-[#141724] p-2.5 rounded-xl border border-[#222738]">
+                            <div className="flex items-center justify-between text-[11px]">
+                              <span className="text-neutral-400 font-semibold">Rules Preset</span>
+                              <button
+                                type="button"
+                                onClick={() => setIsSavingPreset(!isSavingPreset)}
+                                className="text-purple-400 hover:text-purple-300 font-semibold text-[10px] cursor-pointer"
+                              >
+                                {isSavingPreset ? 'Cancel' : '+ Save as Preset'}
+                              </button>
+                            </div>
 
-                        {isSavingPreset && (
-                          <div className="flex items-center gap-1.5 pt-1 pb-1">
-                            <input
-                              type="text"
-                              value={newPresetName}
-                              onChange={e => setNewPresetName(e.target.value)}
-                              placeholder="Preset name (e.g. My Style)..."
-                              className="flex-1 bg-[#0c0e14] border border-[#262c3e] rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-purple-500"
+                            {isSavingPreset && (
+                              <div className="flex items-center gap-1.5 pt-1 pb-1">
+                                <input
+                                  type="text"
+                                  value={newPresetName}
+                                  onChange={e => setNewPresetName(e.target.value)}
+                                  placeholder="Preset name (e.g. My Style)..."
+                                  className="flex-1 bg-[#0c0e14] border border-[#262c3e] rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-purple-500"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={handleSaveCurrentAsPreset}
+                                  className="px-2.5 py-1 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded-lg cursor-pointer shrink-0"
+                                >
+                                  Save
+                                </button>
+                              </div>
+                            )}
+
+                            <CustomSelect
+                              value={selectedPresetId}
+                              onChange={val => handleSelectPreset(val)}
+                              placeholder="Select a rule preset..."
+                              options={[
+                                { value: '', label: 'None (Default / Custom Prompt)' },
+                                ...rulePresets.map(preset => ({
+                                  value: preset.id,
+                                  label: preset.name,
+                                  description: preset.prompt ? preset.prompt.slice(0, 50) + (preset.prompt.length > 50 ? '...' : '') : undefined
+                                }))
+                              ]}
+                              className="bg-[#0c0e14] border-[#222736]"
                             />
-                            <button
-                              type="button"
-                              onClick={handleSaveCurrentAsPreset}
-                              className="px-2.5 py-1 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded-lg cursor-pointer shrink-0"
-                            >
-                              Save
-                            </button>
                           </div>
-                        )}
 
-                        <CustomSelect
-                          value={selectedPresetId}
-                          onChange={val => handleSelectPreset(val)}
-                          placeholder="Select a rule preset..."
-                          options={[
-                            { value: '', label: 'None (Default / Custom Prompt)' },
-                            ...rulePresets.map(preset => ({
-                              value: preset.id,
-                              label: preset.name,
-                              description: preset.prompt ? preset.prompt.slice(0, 50) + (preset.prompt.length > 50 ? '...' : '') : undefined
-                            }))
-                          ]}
-                          className="bg-[#0c0e14] border-[#222736]"
-                        />
-                      </div>
-
-                      <textarea
-                        rows={4}
-                        value={customPrompt}
-                        onChange={e => {
-                          setCustomPrompt(e.target.value);
-                          setSelectedPresetId('');
-                          onUpdateConversation({ ...conversation, customPrompt: e.target.value });
-                        }}
-                        placeholder="e.g. Use *italic* for actions, &quot;quotes&quot; for dialogue, [Name] tags."
-                        className="w-full bg-[#181c28] border border-[#262c3e] rounded-xl p-2.5 text-xs text-white placeholder-neutral-600 focus:outline-none focus:border-purple-500 resize-y font-sans leading-relaxed"
-                      />
-                      {customPrompt && (
-                        <div className="flex items-center justify-between text-[10px] text-neutral-400 pt-0.5">
-                          <span className="text-emerald-400 flex items-center gap-1">
-                            <Check className="w-3 h-3" /> Rule active for subsequent turns
-                          </span>
-                          <button
-                            onClick={() => {
-                              setCustomPrompt('');
+                          <textarea
+                            rows={4}
+                            value={customPrompt}
+                            onChange={e => {
+                              setCustomPrompt(e.target.value);
                               setSelectedPresetId('');
-                              onUpdateConversation({ ...conversation, customPrompt: '' });
+                              onUpdateConversation({ ...conversation, customPrompt: e.target.value });
                             }}
-                            className="text-neutral-500 hover:text-rose-400 transition-colors cursor-pointer"
-                          >
-                            Clear rule
-                          </button>
+                            placeholder="e.g. Use *italic* for actions, &quot;quotes&quot; for dialogue, [Name] tags."
+                            className="w-full bg-[#181c28] border border-[#262c3e] rounded-xl p-2.5 text-xs text-white placeholder-neutral-600 focus:outline-none focus:border-purple-500 resize-y font-sans leading-relaxed"
+                          />
+                          {customPrompt && (
+                            <div className="flex items-center justify-between text-[10px] text-neutral-400 pt-0.5">
+                              <span className="text-emerald-400 flex items-center gap-1">
+                                <Check className="w-3 h-3" /> Rule active for subsequent turns
+                              </span>
+                              <button
+                                onClick={() => {
+                                  setCustomPrompt('');
+                                  setSelectedPresetId('');
+                                  onUpdateConversation({ ...conversation, customPrompt: '' });
+                                }}
+                                className="text-neutral-500 hover:text-rose-400 transition-colors cursor-pointer"
+                              >
+                                Clear rule
+                              </button>
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                  )}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
 
                 {/* 6. TOKENS & COST OPTIMIZER CARD */}
@@ -3521,57 +4318,68 @@ export const ChatView: React.FC<ChatViewProps> = ({
                       <span className="text-[10px] text-emerald-400 font-mono">
                         {tokenPriceService.formatTokenCount(liveTokenStats.totalContextTokens)} tok
                       </span>
-                      <ChevronDown className={`w-3.5 h-3.5 text-neutral-400 transition-transform duration-200 ${openAccordions.tokens ? 'rotate-180' : ''}`} />
+                      <ChevronDown className={`w-3.5 h-3.5 text-neutral-400 transition-transform duration-200 ${activeAccordion === 'tokens' ? 'rotate-180' : ''}`} />
                     </div>
                   </button>
 
-                  {openAccordions.tokens && (
-                    <div className="p-3.5 pt-1 space-y-3 border-t border-[#1a1d27]/70">
-                      {/* Price Counter grid */}
-                      <div className="p-3 bg-[#0d1017] border border-[#1b2132] rounded-xl space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-neutral-400 text-[11px]">Est. Cost / Turn:</span>
-                          <span className="text-purple-300 font-bold font-mono">{liveTokenStats.formattedTotalCost}</span>
-                        </div>
-                        {conversation.cumulativeUsage && conversation.cumulativeUsage.turnCount > 0 && (
-                          <div className="flex items-center justify-between text-[10.5px]">
-                            <span className="text-neutral-400">Total Spent ({conversation.cumulativeUsage.turnCount} turns):</span>
-                            <span className="text-amber-300 font-bold font-mono">
-                              {tokenPriceConfig.currency === 'IDR'
-                                ? tokenPriceService.formatRupiah(conversation.cumulativeUsage.totalCostIdr)
-                                : tokenPriceService.formatCost(conversation.cumulativeUsage.totalCostUsd, 'USD')}
-                            </span>
+                  <AnimatePresence initial={false}>
+                    {activeAccordion === 'tokens' && (
+                      <motion.div
+                        key="content-tokens"
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.28, ease: [0.04, 0.62, 0.23, 0.98] }}
+                        className="overflow-hidden"
+                      >
+                        <div className="p-3.5 pt-1 space-y-3 border-t border-[#1a1d27]/70">
+                          {/* Price Counter grid */}
+                          <div className="p-3 bg-[#0d1017] border border-[#1b2132] rounded-xl space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-neutral-400 text-[11px]">Est. Cost / Turn:</span>
+                              <span className="text-purple-300 font-bold font-mono">{liveTokenStats.formattedTotalCost}</span>
+                            </div>
+                            {conversation.cumulativeUsage && conversation.cumulativeUsage.turnCount > 0 && (
+                              <div className="flex items-center justify-between text-[10.5px]">
+                                <span className="text-neutral-400">Total Spent ({conversation.cumulativeUsage.turnCount} turns):</span>
+                                <span className="text-amber-300 font-bold font-mono">
+                                  {tokenPriceConfig.currency === 'IDR'
+                                    ? tokenPriceService.formatRupiah(conversation.cumulativeUsage.totalCostIdr)
+                                    : tokenPriceService.formatCost(conversation.cumulativeUsage.totalCostUsd, 'USD')}
+                                </span>
+                              </div>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => setIsTokenCounterOpen(true)}
+                              className="w-full py-1.5 rounded-lg bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 text-[10.5px] font-semibold flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                            >
+                              <Calculator className="w-3 h-3" />
+                              <span>Detailed Token & Price Calculator</span>
+                            </button>
                           </div>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => setIsTokenCounterOpen(true)}
-                          className="w-full py-1.5 rounded-lg bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 text-[10.5px] font-semibold flex items-center justify-center gap-1 transition-colors cursor-pointer"
-                        >
-                          <Calculator className="w-3 h-3" />
-                          <span>Detailed Token & Price Calculator</span>
-                        </button>
-                      </div>
 
-                      {/* Token Optimizer Slider */}
-                      <TokenOptimizerSlider
-                        value={conversation.tokenOptimizer || storageService.getTokenOptimizerLevel()}
-                        liveResult={tokenOptimizerService.optimizeContext({
-                          character,
-                          scenario: currentScenario,
-                          persona: currentPersona,
-                          lorebooks,
-                          conversation: { ...conversation, messages },
-                          customRules: customPrompt,
-                          level: conversation.tokenOptimizer || storageService.getTokenOptimizerLevel()
-                        })}
-                        onChange={newLevel => {
-                          storageService.setTokenOptimizerLevel(newLevel);
-                          onUpdateConversation({ ...conversation, tokenOptimizer: newLevel });
-                        }}
-                      />
-                    </div>
-                  )}
+                          {/* Token Optimizer Slider */}
+                          <TokenOptimizerSlider
+                            value={conversation.tokenOptimizer || storageService.getTokenOptimizerLevel()}
+                            liveResult={tokenOptimizerService.optimizeContext({
+                              character,
+                              scenario: currentScenario,
+                              persona: currentPersona,
+                              lorebooks,
+                              conversation: { ...conversation, messages },
+                              customRules: customPrompt,
+                              level: conversation.tokenOptimizer || storageService.getTokenOptimizerLevel()
+                            })}
+                            onChange={newLevel => {
+                              storageService.setTokenOptimizerLevel(newLevel);
+                              onUpdateConversation({ ...conversation, tokenOptimizer: newLevel });
+                            }}
+                          />
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
 
                 {/* 7. CHAT CONTROLS & EXPORT CARD */}
@@ -3587,41 +4395,52 @@ export const ChatView: React.FC<ChatViewProps> = ({
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <span className="text-[10px] text-neutral-400">Tools</span>
-                      <ChevronDown className={`w-3.5 h-3.5 text-neutral-400 transition-transform duration-200 ${openAccordions.tools ? 'rotate-180' : ''}`} />
+                      <ChevronDown className={`w-3.5 h-3.5 text-neutral-400 transition-transform duration-200 ${activeAccordion === 'tools' ? 'rotate-180' : ''}`} />
                     </div>
                   </button>
 
-                  {openAccordions.tools && (
-                    <div className="p-3.5 pt-1 space-y-2 border-t border-[#1a1d27]/70">
-                      <div className="grid grid-cols-2 gap-2">
-                        <button
-                          onClick={() => handleRegenerate()}
-                          disabled={isGenerating}
-                          className="py-2 bg-[#181c28] hover:bg-[#202638] border border-[#262c3e] rounded-xl text-xs font-semibold text-neutral-200 transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-40"
-                        >
-                          <RotateCcw className="w-3.5 h-3.5" />
-                          <span>Regenerate</span>
-                        </button>
+                  <AnimatePresence initial={false}>
+                    {activeAccordion === 'tools' && (
+                      <motion.div
+                        key="content-tools"
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.28, ease: [0.04, 0.62, 0.23, 0.98] }}
+                        className="overflow-hidden"
+                      >
+                        <div className="p-3.5 pt-1 space-y-2 border-t border-[#1a1d27]/70">
+                          <div className="grid grid-cols-2 gap-2">
+                            <button
+                              onClick={() => handleRegenerate()}
+                              disabled={isGenerating}
+                              className="py-2 bg-[#181c28] hover:bg-[#202638] border border-[#262c3e] rounded-xl text-xs font-semibold text-neutral-200 transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-40"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                              <span>Regenerate</span>
+                            </button>
 
-                        <button
-                          onClick={handleContinue}
-                          disabled={isGenerating}
-                          className="py-2 bg-[#181c28] hover:bg-[#202638] border border-[#262c3e] rounded-xl text-xs font-semibold text-neutral-200 transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-40"
-                        >
-                          <span>↳ Continue</span>
-                        </button>
+                            <button
+                              onClick={handleContinue}
+                              disabled={isGenerating}
+                              className="py-2 bg-[#181c28] hover:bg-[#202638] border border-[#262c3e] rounded-xl text-xs font-semibold text-neutral-200 transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-40"
+                            >
+                              <span>↳ Continue</span>
+                            </button>
 
-                        <button
-                          type="button"
-                          onClick={() => setIsExportTranscriptOpen(true)}
-                          className="col-span-2 py-2 bg-purple-900/20 hover:bg-purple-900/35 hover:border-purple-500/40 border border-purple-500/25 rounded-xl text-xs font-semibold text-purple-200 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs active:scale-98"
-                        >
-                          <Download className="w-3.5 h-3.5 text-purple-400" />
-                          <span>Export Chat Transcript</span>
-                        </button>
-                      </div>
-                    </div>
-                  )}
+                            <button
+                              type="button"
+                              onClick={() => setIsExportTranscriptOpen(true)}
+                              className="col-span-2 py-2 bg-purple-900/20 hover:bg-purple-900/35 hover:border-purple-500/40 border border-purple-500/25 rounded-xl text-xs font-semibold text-purple-200 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs active:scale-98"
+                            >
+                              <Download className="w-3.5 h-3.5 text-purple-400" />
+                              <span>Export Chat Transcript</span>
+                            </button>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
 
               </div>
@@ -4097,7 +4916,10 @@ export const ChatView: React.FC<ChatViewProps> = ({
                           step="0.05"
                           value={customization.backgroundDim}
                           onChange={e => updateCustomization({ backgroundDim: parseFloat(e.target.value) })}
-                          className="w-full accent-purple-500 cursor-pointer"
+                          onTouchStart={e => e.stopPropagation()}
+                          onTouchMove={e => e.stopPropagation()}
+                          onTouchEnd={e => e.stopPropagation()}
+                          className="w-full accent-purple-500 cursor-pointer no-swipe"
                         />
                       </div>
                     )}
@@ -4105,6 +4927,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 </div>
               </div>
             )}
+              </div>
             </motion.div>
           </div>
         )}
@@ -4119,32 +4942,33 @@ export const ChatView: React.FC<ChatViewProps> = ({
       />
 
       {/* 5. Janitor AI style Character / Persona Info Modal */}
-      <AnimatePresence>
-        {characterInfoModal.isOpen && typeof document !== 'undefined' && createPortal(
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              className="absolute inset-0 bg-black/85 backdrop-blur-md"
-              onClick={() => setCharacterInfoModal({ isOpen: false })}
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.94, y: 12 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.94, y: 12 }}
-              transition={{ type: 'spring', damping: 28, stiffness: 350 }}
-              className="relative w-full max-w-lg max-h-[85vh] bg-[#0f121b] border border-[#23293d] rounded-2xl shadow-2xl overflow-hidden flex flex-col z-10 transform-gpu"
-              onClick={e => e.stopPropagation()}
-            >
-              {/* Header Close Button */}
-              <button
-                onClick={() => setCharacterInfoModal({ isOpen: false })}
-                className="absolute top-3.5 right-3.5 z-20 w-8 h-8 rounded-full bg-black/60 hover:bg-black/90 text-white flex items-center justify-center transition-all cursor-pointer backdrop-blur-sm border border-white/10"
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {characterInfoModal.isOpen && (
+            <div className="fixed inset-0 z-[110] flex items-center justify-center p-3 sm:p-5">
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="absolute inset-0 bg-black/85 backdrop-blur-md"
+                onClick={() => setCharacterInfoModal({ isOpen: false, isPersona: false })}
+              />
+              <motion.div
+                initial={{ opacity: 0, scale: 0.94, y: 12 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.94, y: 12 }}
+                transition={{ type: 'spring', damping: 28, stiffness: 350 }}
+                className="relative w-full max-w-lg max-h-[85vh] bg-[#0f121b] border border-[#23293d] rounded-2xl shadow-2xl overflow-hidden flex flex-col z-10 transform-gpu"
+                onClick={e => e.stopPropagation()}
               >
-                <X className="w-4 h-4" />
-              </button>
+                {/* Header Close Button */}
+                <button
+                  onClick={() => setCharacterInfoModal({ isOpen: false, isPersona: false })}
+                  className="absolute top-3.5 right-3.5 z-20 w-8 h-8 rounded-full bg-black/60 hover:bg-black/90 text-white flex items-center justify-center transition-all cursor-pointer backdrop-blur-sm border border-white/10"
+                >
+                  <X className="w-4 h-4" />
+                </button>
 
             {/* If Persona Info */}
             {characterInfoModal.isPersona ? (
@@ -4290,7 +5114,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                         className="w-full py-2.5 rounded-xl bg-gradient-to-r from-purple-700 to-indigo-600 hover:from-purple-600 hover:to-indigo-500 text-white font-bold flex items-center justify-center gap-2 shadow-lg shadow-purple-600/30 transition-all cursor-pointer"
                       >
                         <Plus className="w-4 h-4" />
-                        <span>Start New Chat with {character.name.split(' ')[0]}</span>
+                        <span>Start New Chat with {chatCharName}</span>
                       </button>
                     </div>
                   )}
@@ -4298,10 +5122,11 @@ export const ChatView: React.FC<ChatViewProps> = ({
               </div>
             )}
             </motion.div>
-          </div>,
-          document.body
+          </div>
         )}
-      </AnimatePresence>
+      </AnimatePresence>,
+      document.body
+    )}
 
       {/* Token Counter & Pricing Modal */}
       <TokenCounterModal
