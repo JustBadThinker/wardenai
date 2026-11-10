@@ -14,7 +14,7 @@ Warden AI is a community-oriented, self-hostable roleplay interface. It is not a
 
 ---
 
-## Real Features (What the App Actually Has)
+## Features
 
 - **Bring Your Own Key (BYOK)**:
   - Connect directly to **OpenRouter**, **Google Gemini**, **OpenAI**, or any **Custom OpenAI-compatible gateway / reverse proxy** (e.g. self-hosted Ollama, vLLM, or LM Studio).
