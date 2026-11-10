@@ -48,7 +48,7 @@ import {
   generateSillyTavernPngCard,
   downloadFile
 } from '../utils/cardExport';
-import { getHighResImageUrl } from '../utils/imageUtils';
+import { getHighResImageUrl, getFallbackImageUrl } from '../utils/imageUtils';
 
 export interface GalleryMediaItem {
   id: string;
@@ -250,6 +250,33 @@ export const CharacterProfileView: React.FC<CharacterProfileViewProps> = ({
     }
   }, [character.id, character.name]);
 
+  // Fallback-resilient image state for banner and avatar
+  const [bannerSrc, setBannerSrc] = useState<string>(() =>
+    getHighResImageUrl(character.coverUrl || character.avatarUrl)
+  );
+  const [avatarSrc, setAvatarSrc] = useState<string>(() => character.avatarUrl || '');
+
+  useEffect(() => {
+    setBannerSrc(getHighResImageUrl(character.coverUrl || character.avatarUrl));
+    setAvatarSrc(character.avatarUrl || '');
+  }, [character.coverUrl, character.avatarUrl]);
+
+  const handleBannerError = () => {
+    const fallback = getFallbackImageUrl(bannerSrc);
+    if (fallback && fallback !== bannerSrc) {
+      setBannerSrc(fallback);
+    } else if (character.avatarUrl && bannerSrc !== character.avatarUrl) {
+      setBannerSrc(character.avatarUrl);
+    }
+  };
+
+  const handleAvatarError = () => {
+    const fallback = getFallbackImageUrl(avatarSrc);
+    if (fallback && fallback !== avatarSrc) {
+      setAvatarSrc(fallback);
+    }
+  };
+
   // Reviews & Ratings State
   const [reviews, setReviews] = useState<CharacterReview[]>(() =>
     storageService.getCharacterReviews(character.id)
@@ -354,10 +381,11 @@ export const CharacterProfileView: React.FC<CharacterProfileViewProps> = ({
       {/* Top Banner Image with Back & Actions */}
       <div className="relative w-full h-64 sm:h-80 md:h-96 overflow-hidden bg-[#090b10]">
         <img
-          src={getHighResImageUrl(character.coverUrl || character.avatarUrl)}
+          src={bannerSrc || getHighResImageUrl(character.coverUrl || character.avatarUrl)}
           alt={character.name}
           referrerPolicy="no-referrer"
-          onClick={() => setLightboxImage({ url: getHighResImageUrl(character.coverUrl || character.avatarUrl), title: character.name })}
+          onError={handleBannerError}
+          onClick={() => setLightboxImage({ url: bannerSrc || getHighResImageUrl(character.coverUrl || character.avatarUrl), title: character.name })}
           className="w-full h-full object-cover object-top cursor-pointer hover:scale-105 transition-transform duration-500"
           title="Click to view full HD artwork"
         />
@@ -461,14 +489,15 @@ export const CharacterProfileView: React.FC<CharacterProfileViewProps> = ({
           <div className="flex items-end gap-3.5 sm:gap-4 w-full min-w-0 flex-1">
             {/* Square Overlapping Avatar */}
             <div
-              onClick={() => setLightboxImage({ url: character.avatarUrl, title: character.name })}
+              onClick={() => setLightboxImage({ url: avatarSrc || character.avatarUrl, title: character.name })}
               className="relative w-20 h-20 sm:w-28 sm:h-28 rounded-2xl overflow-hidden bg-[#0c0e14] border-2 border-[#1b1e28] shadow-2xl shrink-0 cursor-pointer group"
               title="Click to view & download HD avatar"
             >
               <img
-                src={character.avatarUrl}
+                src={avatarSrc || character.avatarUrl}
                 alt={character.name}
                 referrerPolicy="no-referrer"
+                onError={handleAvatarError}
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
               />
             </div>

@@ -30,7 +30,7 @@ import { RichTextRenderer } from '../common/RichTextRenderer';
 import { cleanCreatorHandle } from '../../services/aiProviderService';
 import { CatPulsingLoader } from '../common/CatPulsingLoader';
 import { ImageLightboxModal } from '../common/ImageLightboxModal';
-import { getHighResImageUrl } from '../../utils/imageUtils';
+import { getHighResImageUrl, getFallbackImageUrl } from '../../utils/imageUtils';
 
 interface CommunityCharacterModalProps {
   character: CommunityCharacter | null;
@@ -67,6 +67,23 @@ export const CommunityCharacterModal: React.FC<CommunityCharacterModalProps> = (
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
   const [lightboxImageUrl, setLightboxImageUrl] = useState<string>('');
   const [lightboxImageTitle, setLightboxImageTitle] = useState<string>('');
+  const [bannerSrc, setBannerSrc] = useState<string>('');
+
+  useEffect(() => {
+    if (character) {
+      const raw = detail?.avatarUrl || character.avatarUrl || '';
+      setBannerSrc(getHighResImageUrl(raw));
+    }
+  }, [detail?.avatarUrl, character?.avatarUrl]);
+
+  const handleBannerImgError = () => {
+    const fallback = getFallbackImageUrl(bannerSrc);
+    if (fallback && fallback !== bannerSrc) {
+      setBannerSrc(fallback);
+    } else if (character?.avatarUrl && bannerSrc !== character.avatarUrl) {
+      setBannerSrc(character.avatarUrl);
+    }
+  };
 
   // Extract all media images for character (Avatar, Description banners, Scenario illustrations)
   const communityGallery = useMemo(() => {
@@ -203,9 +220,10 @@ export const CommunityCharacterModal: React.FC<CommunityCharacterModalProps> = (
                 title={!shouldBlur ? 'Click to view & download HD artwork' : undefined}
               >
                 <img
-                  src={getHighResImageUrl(detail?.avatarUrl || character.avatarUrl)}
+                  src={bannerSrc || getHighResImageUrl(detail?.avatarUrl || character.avatarUrl)}
                   alt={character.name}
                   referrerPolicy="no-referrer"
+                  onError={handleBannerImgError}
                   className={`w-full h-full object-cover object-top transition-transform duration-500 ${
                     !shouldBlur ? 'group-hover:scale-105' : ''
                   } ${shouldBlur ? 'blur-2xl scale-110' : ''}`}
