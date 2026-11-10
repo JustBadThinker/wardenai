@@ -17,37 +17,23 @@ interface ImageLightboxModalProps {
 }
 
 /**
- * Transforms an image URL to its highest available resolution (HD).
- * E.g. converts Unsplash thumbnail width query parameters to high-res.
+ * Safely resolves image URL for preview without breaking working CDN thumbnails.
  */
 export function getHdImageUrl(url: string): string {
   if (!url) return '';
-  let result = url;
+  let result = url.trim();
 
   // Unsplash: replace small width/quality parameters with high-resolution parameters
   if (result.includes('images.unsplash.com')) {
     result = result
-      .replace(/([?&])w=\d+/g, '$1w=1920')
+      .replace(/([?&])w=\d+/g, '$1w=1440')
       .replace(/([?&])q=\d+/g, '$1q=90');
-    if (!result.includes('w=1920')) {
-      result += (result.includes('?') ? '&' : '?') + 'w=1920&q=90';
+    if (!result.includes('w=1440')) {
+      result += (result.includes('?') ? '&' : '?') + 'w=1440&q=90';
     }
   }
 
-  // Datacat & Chub: upgrade thumb/card thumbnails to full avatar if applicable
-  if (result.includes('chub.ai') || result.includes('datacat.run') || result.includes('charhub')) {
-    result = result
-      .replace(/[?&]width=\d+/g, '')
-      .replace(/[?&]thumb=true/g, '')
-      .replace(/\/thumb\.webp(\?|$)/, '/card.webp$1')
-      .replace(/\/avatar\.webp(\?|$)/, result.includes('charhub') ? '/chara_card_v2.png$1' : '/card.webp$1');
-  }
-
-  // Cloudinary: replace w_xxx,h_xxx,c_fill with high-res limit
-  if (result.includes('res.cloudinary.com')) {
-    result = result.replace(/\/c_thumb,w_\d+,h_\d+\//, '/c_limit,w_1920/');
-  }
-
+  // Preserve working thumbnail / avatar URLs directly so Datacat and Janitor avatars load reliably
   return result;
 }
 
@@ -130,19 +116,17 @@ export const ImageLightboxModal: React.FC<ImageLightboxModalProps> = ({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-6 bg-black/92 backdrop-blur-xl animate-fade-in select-none"
+      className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-6 bg-black/92 backdrop-blur-xl animate-fade-in select-none cursor-pointer"
       onClick={onClose}
     >
-      <div
-        className="relative max-w-5xl max-h-[92dvh] w-full flex flex-col items-center justify-center"
-        onClick={e => e.stopPropagation()}
-      >
+      {/* Click-through wrapper that allows clicking outside the image frame to trigger backdrop onClose */}
+      <div className="relative max-w-5xl max-h-[92dvh] w-full flex flex-col items-center justify-center pointer-events-none">
         {/* Top Control Bar */}
-        <div className="w-full flex items-center justify-between mb-3 px-2">
+        <div className="w-full flex items-center justify-between mb-3 px-2 pointer-events-auto">
           <div className="flex items-center gap-2 max-w-[65%] sm:max-w-[80%]">
             <span className="px-2 py-0.5 rounded-full bg-purple-600/30 text-purple-300 border border-purple-500/40 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 shrink-0">
               <Sparkles className="w-3 h-3 text-purple-400" />
-              <span>HD Preview</span>
+              <span>Preview</span>
             </span>
             {title && (
               <span className="text-xs sm:text-sm font-bold text-white truncate drop-shadow-md">
@@ -158,7 +142,7 @@ export const ImageLightboxModal: React.FC<ImageLightboxModalProps> = ({
               onClick={handleDownload}
               disabled={isDownloading}
               className="px-3 py-1.5 rounded-xl bg-[#161a26]/90 hover:bg-[#202638] text-white border border-white/20 hover:border-purple-500/50 text-xs font-bold flex items-center gap-1.5 shadow-lg transition-all cursor-pointer active:scale-95 disabled:opacity-50"
-              title="Download high-resolution image"
+              title="Download image"
             >
               {downloadSuccess ? (
                 <>
@@ -186,17 +170,20 @@ export const ImageLightboxModal: React.FC<ImageLightboxModalProps> = ({
         </div>
 
         {/* Image Frame with pulsing loader placeholder */}
-        <div className="relative min-h-[220px] sm:min-h-[360px] max-w-full max-h-[82dvh] flex items-center justify-center overflow-hidden rounded-2xl bg-[#0a0c12]/60 border border-white/10 shadow-2xl">
+        <div
+          onClick={e => e.stopPropagation()}
+          className="relative min-h-[220px] sm:min-h-[360px] max-w-full max-h-[82dvh] flex items-center justify-center overflow-hidden rounded-2xl bg-[#0a0c12]/60 border border-white/10 shadow-2xl pointer-events-auto cursor-default"
+        >
           {/* Pulsing Cat Loader while fetching the image */}
           {!isLoaded && !hasError && (
             <div className="p-8 sm:p-14 flex flex-col items-center justify-center">
-              <CatPulsingLoader size="lg" label="Loading HD artwork..." />
+              <CatPulsingLoader size="lg" label="Loading artwork..." />
             </div>
           )}
 
           {hasError ? (
             <div className="p-8 text-center text-xs text-neutral-400">
-              <p>Unable to load high-resolution image.</p>
+              <p>Unable to load image preview.</p>
               <a
                 href={imageUrl}
                 target="_blank"
@@ -213,7 +200,7 @@ export const ImageLightboxModal: React.FC<ImageLightboxModalProps> = ({
               referrerPolicy="no-referrer"
               onLoad={() => setIsLoaded(true)}
               onError={() => {
-                // If HD url failed, retry with original url before showing error state
+                // If modified url failed, retry with original url before showing error state
                 if (activeSrc !== imageUrl) {
                   setActiveSrc(imageUrl);
                 } else {

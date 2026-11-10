@@ -43,7 +43,10 @@ import {
   TrendingDown,
   Download,
   FileText,
-  FileCode
+  FileCode,
+  Volume2,
+  VolumeX,
+  Play
 } from 'lucide-react';
 import {
   Character,
@@ -72,6 +75,7 @@ import { RichTextRenderer } from '../components/common/RichTextRenderer';
 import { CatPulsingLoader } from '../components/common/CatPulsingLoader';
 import { ImageLightboxModal } from '../components/common/ImageLightboxModal';
 import { CustomSelect } from '../components/common/CustomSelect';
+import { ttsService, TtsConfig, KOKORO_VOICES } from '../services/ttsService';
 import {
   exportTranscriptMarkdown,
   exportTranscriptPlainText,
@@ -347,6 +351,50 @@ export const ChatView: React.FC<ChatViewProps> = ({
   const [isExportTranscriptOpen, setIsExportTranscriptOpen] = useState(false);
   const [transcriptFormat, setTranscriptFormat] = useState<'md' | 'txt' | 'json'>('md');
   const [transcriptCopied, setTranscriptCopied] = useState(false);
+
+  // Adaptive Drawer & Collapsible Accordion State
+  const [isMobileScreen, setIsMobileScreen] = useState(() => typeof window !== 'undefined' && window.innerWidth < 640);
+  useEffect(() => {
+    const handleResize = () => setIsMobileScreen(window.innerWidth < 640);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const [openAccordions, setOpenAccordions] = useState<Record<string, boolean>>({
+    aiEngine: true,
+    persona: false,
+    voice: true,
+    tuning: false,
+    prompt: false,
+    tokens: false,
+    tools: false
+  });
+
+  const toggleAccordion = (key: string) => {
+    setOpenAccordions(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  // Kokoro TTS State & Listeners
+  const [ttsConfig, setTtsConfig] = useState<TtsConfig>(() => ttsService.getConfig());
+  const [ttsPlayback, setTtsPlayback] = useState(ttsService.getPlaybackState());
+
+  useEffect(() => {
+    const unsub = ttsService.subscribe(state => setTtsPlayback(state));
+    return () => {
+      unsub();
+      ttsService.stop();
+    };
+  }, []);
+
+  const updateTtsConfig = (updates: Partial<TtsConfig>) => {
+    const next = ttsService.saveConfig(updates);
+    setTtsConfig(next);
+  };
+
+  const handleTestVoice = () => {
+    const testSample = `"Hello! I'm ${character.name.split(' ')[0]}. My voice is configured and ready for our roleplay."`;
+    ttsService.speak(testSample, 'tts-test-sample', ttsConfig);
+  };
 
   const currentPersona = allPersonas.find(p => p.id === activePersonaId) || persona || allPersonas[0];
   const currentProvider: ProviderConfig = {
@@ -978,6 +1026,10 @@ export const ChatView: React.FC<ChatViewProps> = ({
         updatedAt: new Date().toISOString()
       };
       onUpdateConversation(updatedConv);
+
+      if (ttsConfig.enabled && ttsConfig.autoPlay) {
+        ttsService.speak(targetText, assistantMsg.id, ttsConfig);
+      }
     } catch (err: any) {
       console.error('Chat generation error', err);
     } finally {
@@ -1120,6 +1172,10 @@ export const ChatView: React.FC<ChatViewProps> = ({
         updatedAt: new Date().toISOString()
       };
       onUpdateConversation(updatedConv);
+
+      if (ttsConfig.enabled && ttsConfig.autoPlay) {
+        ttsService.speak(targetText, assistantMsg.id, ttsConfig);
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -1269,6 +1325,10 @@ export const ChatView: React.FC<ChatViewProps> = ({
           updatedAt: new Date().toISOString()
         };
         onUpdateConversation(updatedConv);
+
+        if (ttsConfig.enabled && ttsConfig.autoPlay) {
+          ttsService.speak(targetText, lastMsg.id, ttsConfig);
+        }
     } catch (err) {
       console.error('Continue narration error:', err);
     } finally {
@@ -2053,6 +2113,36 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
                       {/* Action buttons: transparent frosted glass pill */}
                       <div className="opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity flex items-center gap-0.5 sm:gap-1 bg-[#0c0e14]/60 backdrop-blur-xl px-1.5 py-0.5 rounded-xl border border-white/15 shadow-lg shrink-0 mr-0.5 z-10">
+                        {/* Character Voice TTS Button */}
+                        {!isUser && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (ttsPlayback.isSpeaking && ttsPlayback.currentMessageId === msg.id) {
+                                ttsService.stop();
+                              } else {
+                                ttsService.speak(msg.content, msg.id, ttsConfig);
+                              }
+                            }}
+                            className={`p-1.5 sm:p-1 active:scale-90 transition-transform cursor-pointer rounded-lg ${
+                              ttsPlayback.isSpeaking && ttsPlayback.currentMessageId === msg.id
+                                ? 'text-pink-400 bg-pink-950/60 ring-1 ring-pink-500/50 animate-pulse'
+                                : 'text-neutral-400 hover:text-pink-300'
+                            }`}
+                            title={
+                              ttsPlayback.isSpeaking && ttsPlayback.currentMessageId === msg.id
+                                ? 'Stop voice playback'
+                                : 'Play character voice (reads dialogue only)'
+                            }
+                          >
+                            {ttsPlayback.isSpeaking && ttsPlayback.currentMessageId === msg.id ? (
+                              <Square className="w-3.5 h-3.5 fill-current" />
+                            ) : (
+                              <Volume2 className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        )}
+
                         {/* Allow Regenerate from a user message OR on a character response that follows a user message */}
                         {(isUser || messages.findIndex(m => m.id === msg.id) > 0) && (
                           <button
@@ -2696,37 +2786,46 @@ export const ChatView: React.FC<ChatViewProps> = ({
         </div>
       </div>
 
-      {/* 3. Smooth Slide-out Drawer: Opens via the 3-dots button with spring physics */}
+      {/* 3. Smooth Slide-out Drawer: Adaptive Bottom Sheet on Mobile (< sm), Side Drawer on Desktop (>= sm) */}
       <AnimatePresence>
         {rightPanel !== 'hidden' && (
-          <div className="fixed inset-0 z-50 flex justify-end">
+          <div className="fixed inset-0 z-50 flex items-end sm:items-stretch justify-center sm:justify-end">
             {/* Backdrop click to close */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
-              className="absolute inset-0 bg-black/60 backdrop-blur-xs"
+              className="absolute inset-0 bg-black/60 backdrop-blur-xs cursor-pointer"
               onClick={() => setRightPanel('hidden')}
             />
 
-            {/* Drawer content */}
+            {/* Drawer content: Bottom Sheet on Mobile (< sm), Side Drawer on Desktop (>= sm) */}
             <motion.div
-              initial={{ x: '100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '100%' }}
+              initial={isMobileScreen ? { y: '100%' } : { x: '100%' }}
+              animate={isMobileScreen ? { y: 0 } : { x: 0 }}
+              exit={isMobileScreen ? { y: '100%' } : { x: '100%' }}
               transition={{ type: 'spring', damping: 30, stiffness: 350, mass: 0.8 }}
-              className="relative w-full max-w-sm sm:w-96 bg-[#0c0e14] border-l border-[#1a1d27] h-full flex flex-col shadow-2xl z-10 overflow-hidden transform-gpu"
+              className="relative w-full sm:w-96 max-h-[88dvh] sm:max-h-full sm:h-full bg-[#0c0e14] border-t sm:border-t-0 sm:border-l border-[#1f2434] rounded-t-3xl sm:rounded-none flex flex-col shadow-2xl z-10 overflow-hidden transform-gpu"
               style={{
-                paddingBottom: 'env(safe-area-inset-bottom, 0px)'
+                paddingBottom: isMobileScreen ? 'max(14px, env(safe-area-inset-bottom, 14px))' : 'env(safe-area-inset-bottom, 0px)'
               }}
             >
-              {/* Drawer Header with 3 Tabs (Safe-area padded for camera punch-holes and status bar notches) */}
+              {/* Mobile Drag Pill Handle */}
+              <div className="sm:hidden pt-3 pb-1 flex justify-center shrink-0">
+                <div
+                  className="w-12 h-1.5 rounded-full bg-neutral-700/80 cursor-pointer active:bg-purple-500 transition-colors"
+                  onClick={() => setRightPanel('hidden')}
+                  title="Swipe or click to close"
+                />
+              </div>
+
+              {/* Drawer Header with 3 Tabs */}
               <div
                 className="border-b border-[#1a1d27] px-3 sm:px-4 flex items-center justify-between shrink-0 bg-[#0c0e14]"
                 style={{
-                  paddingTop: 'max(14px, env(safe-area-inset-top, 14px))',
-                  minHeight: 'calc(52px + max(14px, env(safe-area-inset-top, 14px)))',
+                  paddingTop: isMobileScreen ? '6px' : 'max(14px, env(safe-area-inset-top, 14px))',
+                  minHeight: isMobileScreen ? '48px' : 'calc(52px + max(14px, env(safe-area-inset-top, 14px)))',
                   paddingBottom: '8px'
                 }}
               >
@@ -2791,533 +2890,740 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 </button>
               </div>
 
-            {/* DRAWER BODY: TAB 1 - OPTIONS & AI GATEWAY */}
+            {/* DRAWER BODY: TAB 1 - OPTIONS (Clean Collapsible Accordions) */}
             {rightPanel === 'options' && (
-              <div className="flex-1 overflow-y-auto p-4 space-y-5 text-xs">
-                {/* Mobile/Drawer Multi-Chat Session Switcher */}
-                <div className="p-3 bg-[#131622] border border-[#202534] rounded-xl space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-white flex items-center gap-1.5">
-                      <MessageSquare className="w-3.5 h-3.5 text-purple-400" />
-                      <span>Chats with {character.name.split(' ')[0]}</span>
-                    </span>
-                    <span className="text-[10px] font-mono text-purple-300 bg-purple-900/30 px-1.5 py-0.5 rounded">
-                      {allConversations.filter(c => c.characterId === character.id).length || 1}
-                    </span>
-                  </div>
+              <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 text-xs">
 
-                  {onStartNewChat && (
-                    <button
-                      onClick={() => {
-                        setRightPanel('hidden');
-                        onStartNewChat(character);
-                      }}
-                      className="w-full py-2 px-3 rounded-lg bg-gradient-to-r from-purple-700 to-indigo-600 hover:from-purple-600 hover:to-indigo-500 text-white font-bold flex items-center justify-center gap-1.5 text-xs shadow-sm shadow-purple-600/30 transition-all cursor-pointer active:scale-95"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>Start Another New Chat</span>
-                    </button>
-                  )}
+                {/* 1. AI ENGINE & GATEWAY CARD */}
+                <div className="bg-[#12151e] border border-[#1e2330] rounded-2xl overflow-hidden transition-all">
+                  <button
+                    type="button"
+                    onClick={() => toggleAccordion('aiEngine')}
+                    className="w-full p-3.5 flex items-center justify-between hover:bg-[#161a26] transition-colors cursor-pointer select-none text-left"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Zap className="w-4 h-4 text-purple-400 shrink-0" />
+                      <span className="font-bold text-white text-xs">AI Engine & Gateway</span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-[10px] text-purple-400 uppercase font-mono bg-purple-950/60 px-1.5 py-0.5 rounded border border-purple-800/40">
+                        {providerType}
+                      </span>
+                      <ChevronDown className={`w-3.5 h-3.5 text-neutral-400 transition-transform duration-200 ${openAccordions.aiEngine ? 'rotate-180' : ''}`} />
+                    </div>
+                  </button>
 
-                  {/* List of other conversations with this character */}
-                  <div className="space-y-1 pt-1 max-h-40 overflow-y-auto">
-                    {[...allConversations]
-                      .filter(c => c.characterId === character.id)
-                      .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime())
-                      .map(conv => {
-                        const isSelected = conv.id === conversation.id;
-                        const convPersona = allPersonas.find(p => p.id === conv.personaId) || currentPersona;
-                        const lastMsg = conv.messages[conv.messages.length - 1];
-                        const sneakPeek = lastMsg
-                          ? lastMsg.content.replace(/[*#_`]/g, '').trim().slice(0, 70) + (lastMsg.content.length > 70 ? '...' : '')
-                          : 'No messages yet';
+                  {openAccordions.aiEngine && (
+                    <div className="p-3.5 pt-1 space-y-3 border-t border-[#1a1d27]/70">
+                      <div>
+                        <label className="text-neutral-400 block mb-1 text-[11px]">Provider Architecture</label>
+                        <CustomSelect<ProviderType>
+                          value={providerType}
+                          onChange={val => {
+                            let newUrl = gatewayBaseUrl;
+                            let newModel = gatewayModel;
+                            if (val === 'openrouter') {
+                              newUrl = 'https://openrouter.ai/api/v1';
+                              newModel = 'anthropic/claude-3.5-sonnet';
+                            } else if (val === 'openai') {
+                              newUrl = 'https://api.openai.com/v1';
+                              newModel = 'gpt-4o-mini';
+                            } else if (val === 'gemini') {
+                              newModel = 'gemini-2.5-flash';
+                            }
+                            saveGatewayToLocalStorage({ type: val, baseUrl: newUrl, model: newModel });
+                            setConnectionTestResult(null);
+                          }}
+                          options={[
+                            { value: 'simulation', label: 'Built-in Roleplay Simulation Engine', description: 'Zero-config offline engine' },
+                            { value: 'custom', label: 'Custom AI Gateway / Reverse Proxy (OpenAI format)', description: 'Connect your own private server or proxy' },
+                            { value: 'openrouter', label: 'OpenRouter (Claude, Llama, Mistral)', description: 'Multi-model API gateway' },
+                            { value: 'openai', label: 'OpenAI Direct (GPT-4o, GPT-4o-mini)', description: 'Official OpenAI endpoint' },
+                            { value: 'gemini', label: 'Google Gemini API', description: 'Official Google Gemini models' }
+                          ]}
+                          className="bg-[#181c28] border-[#262c3e]"
+                        />
+                      </div>
 
-                        return (
-                          <div
-                            key={conv.id}
-                            onClick={() => {
-                              setRightPanel('hidden');
-                              onSelectConversation && onSelectConversation(conv);
+                      {/* Gateway Base URL */}
+                      {(providerType === 'custom' || providerType === 'openrouter') && (
+                        <div>
+                          <label className="text-neutral-400 block mb-1 text-[11px]">Gateway / Proxy Base URL</label>
+                          <input
+                            type="text"
+                            placeholder="https://my-proxy.com/v1"
+                            value={gatewayBaseUrl}
+                            onChange={e => {
+                              saveGatewayToLocalStorage({ baseUrl: e.target.value });
+                              setConnectionTestResult(null);
                             }}
-                            className={`p-2 rounded-lg cursor-pointer transition-colors flex items-center justify-between gap-2 ${
-                              isSelected
-                                ? 'bg-purple-900/30 text-white border border-purple-500/40'
-                                : 'bg-[#0d1017] hover:bg-[#151926] text-neutral-300'
-                            }`}
-                          >
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-1 text-[11px] font-bold truncate">
-                                <span>{convPersona?.name ? `as ${convPersona.name}` : (conv.title || 'Chat')}</span>
-                                {isSelected && <span className="text-[9px] text-purple-400 font-mono">(active)</span>}
-                              </div>
-                              <p className="text-[10px] text-neutral-400 truncate">{sneakPeek}</p>
-                            </div>
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              <span className="text-[9px] font-mono text-neutral-500">{conv.messages.length} msgs</span>
-                              {onDeleteConversation && (
-                                <button
-                                  type="button"
-                                  onClick={e => {
-                                    e.stopPropagation();
-                                    onDeleteConversation(conv.id);
-                                  }}
-                                  className="p-1 text-neutral-400 hover:text-rose-400 active:text-rose-400 rounded-md hover:bg-rose-500/15 transition-all cursor-pointer"
-                                  title="Delete this chat session"
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                  </div>
-                </div>
-                {/* Active Persona dropdown */}
-                <div>
-                  <label className="text-neutral-400 font-semibold block mb-1.5 text-xs">Active Persona</label>
-                  <CustomSelect
-                    value={activePersonaId}
-                    onChange={newId => {
-                      handleSwitchPersona(newId);
-                    }}
-                    options={allPersonas.map(p => ({
-                      value: p.id,
-                      label: p.name,
-                      description: p.shortDescription ? p.shortDescription.slice(0, 50) + (p.shortDescription.length > 50 ? '...' : '') : undefined
-                    }))}
-                    className="bg-[#131620] border-[#202534]"
-                  />
-                </div>
-
-                {/* Active Scenario dropdown */}
-                <div>
-                  <label className="text-neutral-400 font-semibold block mb-1.5 text-xs">Active Scenario</label>
-                  <CustomSelect
-                    value={activeScenarioId}
-                    onChange={newId => handleSwitchScenario(newId, messages.length <= 1)}
-                    options={(character.scenarios || []).map(sc => ({
-                      value: sc.id,
-                      label: sc.title,
-                      description: sc.description ? sc.description.slice(0, 50) + (sc.description.length > 50 ? '...' : '') : undefined
-                    }))}
-                    className="bg-[#131620] border-[#202534]"
-                  />
-                  {messages.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => handleSwitchScenario(activeScenarioId, true)}
-                      className="mt-2 w-full py-2 px-3 rounded-xl bg-purple-600/20 hover:bg-purple-600/35 border border-purple-500/35 text-purple-200 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95"
-                      title="Reset current conversation to this scenario's opening greeting"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5 text-purple-400" />
-                      <span>Reset Chat to This Scenario Greeting</span>
-                    </button>
-                  )}
-                </div>
-
-                {/* Interactive Token & Price Counter Card */}
-                <div className="p-3.5 bg-[#121522] border border-[#20273c] rounded-2xl space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 font-bold text-white text-xs">
-                      <Coins className="w-4 h-4 text-purple-400" />
-                      <span>Token & Price Counter</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setIsTokenCounterOpen(true)}
-                      className="px-2 py-0.5 rounded-lg bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 text-[10.5px] font-semibold flex items-center gap-1 transition-colors cursor-pointer"
-                    >
-                      <Calculator className="w-3 h-3" />
-                      <span>Calculate</span>
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-2 text-center text-xs">
-                    <div className="p-2 rounded-xl bg-[#0c0e15] border border-[#1b2132]">
-                      <div className="text-[10px] text-neutral-400">Context</div>
-                      <div className="font-bold text-white font-mono text-xs mt-0.5">
-                        {tokenPriceService.formatTokenCount(liveTokenStats.totalContextTokens)}
-                      </div>
-                      <div className="text-[9px] text-neutral-500 font-mono">
-                        {liveTokenStats.contextUsagePercent}% ctx
-                      </div>
-                    </div>
-                    <div className="p-2 rounded-xl bg-[#0c0e15] border border-[#1b2132]">
-                      <div className="text-[10px] text-neutral-400">1M Input</div>
-                      <div className="font-bold text-purple-300 font-mono text-xs mt-0.5 truncate" title={`Price rate per 1M input tokens: ${tokenPriceService.formatRate(tokenPriceConfig.pricePer1MInput, tokenPriceConfig.currency, tokenPriceConfig.pricePer1MInputIdr, tokenPriceConfig.usdToIdrRate)}`}>
-                        {tokenPriceService.formatRate(tokenPriceConfig.pricePer1MInput, tokenPriceConfig.currency, tokenPriceConfig.pricePer1MInputIdr, tokenPriceConfig.usdToIdrRate)}
-                      </div>
-                      <div className="text-[9px] text-neutral-500 font-mono">
-                        {tokenPriceService.formatTokenCount(liveTokenStats.inputTokens)} tok
-                      </div>
-                    </div>
-                    <div className="p-2 rounded-xl bg-[#0c0e15] border border-[#1b2132]">
-                      <div className="text-[10px] text-neutral-400">1M Output</div>
-                      <div className="font-bold text-cyan-300 font-mono text-xs mt-0.5 truncate" title={`Price rate per 1M output tokens: ${tokenPriceService.formatRate(tokenPriceConfig.pricePer1MOutput, tokenPriceConfig.currency, tokenPriceConfig.pricePer1MOutputIdr, tokenPriceConfig.usdToIdrRate)}`}>
-                        {tokenPriceService.formatRate(tokenPriceConfig.pricePer1MOutput, tokenPriceConfig.currency, tokenPriceConfig.pricePer1MOutputIdr, tokenPriceConfig.usdToIdrRate)}
-                      </div>
-                      <div className="text-[9px] text-neutral-500 font-mono">
-                        {tokenPriceService.formatTokenCount(liveTokenStats.outputTokens)} tok
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-1 pt-1 border-t border-[#1a1f30] text-xs font-mono">
-                    <div className="flex items-center justify-between">
-                      <span className="text-neutral-400 text-[11px]">Est. Cost / Turn:</span>
-                      <span className="text-purple-300 font-bold">{liveTokenStats.formattedTotalCost}</span>
-                    </div>
-                    {conversation.cumulativeUsage && conversation.cumulativeUsage.turnCount > 0 && (
-                      <div className="flex items-center justify-between text-[10.5px]">
-                        <span className="text-neutral-400">Total Spent ({conversation.cumulativeUsage.turnCount} turns):</span>
-                        <span className="text-amber-300 font-bold">
-                          {tokenPriceConfig.currency === 'IDR'
-                            ? tokenPriceService.formatRupiah(conversation.cumulativeUsage.totalCostIdr)
-                            : tokenPriceService.formatCost(conversation.cumulativeUsage.totalCostUsd, 'USD')}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Token Optimizer Slider with Live Tooltips & Percentages */}
-                <TokenOptimizerSlider
-                  value={conversation.tokenOptimizer || storageService.getTokenOptimizerLevel()}
-                  liveResult={tokenOptimizerService.optimizeContext({
-                    character,
-                    scenario: currentScenario,
-                    persona: currentPersona,
-                    lorebooks,
-                    conversation: { ...conversation, messages },
-                    customRules: customPrompt,
-                    level: conversation.tokenOptimizer || storageService.getTokenOptimizerLevel()
-                  })}
-                  onChange={newLevel => {
-                    storageService.setTokenOptimizerLevel(newLevel);
-                    onUpdateConversation({ ...conversation, tokenOptimizer: newLevel });
-                  }}
-                />
-
-                {/* AI Gateway / Proxy / Provider Settings */}
-                <div className="p-3.5 bg-[#12151e] border border-[#1e2330] rounded-2xl space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-white flex items-center gap-1.5">
-                      <Zap className="w-4 h-4 text-purple-400" />
-                      <span>AI Engine & Proxy Gateway</span>
-                    </span>
-                    <div className="flex items-center gap-2">
-                      {gatewaySavedNotice && (
-                        <span className="text-[10px] text-emerald-400 font-semibold flex items-center gap-1">
-                          <Check className="w-3 h-3" /> Saved
-                        </span>
-                      )}
-                      <span className="text-[10px] text-purple-400 uppercase font-mono">{providerType}</span>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-neutral-400 block mb-1 text-[11px]">Provider Architecture</label>
-                    <CustomSelect<ProviderType>
-                      value={providerType}
-                      onChange={val => {
-                        let newUrl = gatewayBaseUrl;
-                        let newModel = gatewayModel;
-                        if (val === 'openrouter') {
-                          newUrl = 'https://openrouter.ai/api/v1';
-                          newModel = 'anthropic/claude-3.5-sonnet';
-                        } else if (val === 'openai') {
-                          newUrl = 'https://api.openai.com/v1';
-                          newModel = 'gpt-4o-mini';
-                        } else if (val === 'gemini') {
-                          newModel = 'gemini-2.5-flash';
-                        }
-                        saveGatewayToLocalStorage({ type: val, baseUrl: newUrl, model: newModel });
-                        setConnectionTestResult(null);
-                      }}
-                      options={[
-                        { value: 'simulation', label: 'Built-in Roleplay Simulation Engine', description: 'Zero-config offline engine' },
-                        { value: 'custom', label: 'Custom AI Gateway / Reverse Proxy (OpenAI format)', description: 'Connect your own private server or proxy' },
-                        { value: 'openrouter', label: 'OpenRouter (Claude, Llama, Mistral)', description: 'Multi-model API gateway' },
-                        { value: 'openai', label: 'OpenAI Direct (GPT-4o, GPT-4o-mini)', description: 'Official OpenAI endpoint' },
-                        { value: 'gemini', label: 'Google Gemini API', description: 'Official Google Gemini models' }
-                      ]}
-                      className="bg-[#181c28] border-[#262c3e]"
-                    />
-                  </div>
-
-                  {/* Gateway Base URL (for custom or openrouter) */}
-                  {(providerType === 'custom' || providerType === 'openrouter') && (
-                    <div>
-                      <label className="text-neutral-400 block mb-1 text-[11px]">Gateway / Proxy Base URL</label>
-                      <input
-                        type="text"
-                        placeholder="https://my-proxy.com/v1"
-                        value={gatewayBaseUrl}
-                        onChange={e => {
-                          saveGatewayToLocalStorage({ baseUrl: e.target.value });
-                          setConnectionTestResult(null);
-                        }}
-                        className="w-full bg-[#181c28] border border-[#262c3e] rounded-xl p-2 text-xs text-white font-mono placeholder-neutral-600 focus:outline-none focus:border-purple-500"
-                      />
-                    </div>
-                  )}
-
-                  {/* Model ID */}
-                  <div>
-                    <label className="text-neutral-400 block mb-1 text-[11px]">Custom Model Name</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. meta-llama/llama-3.3-70b-instruct"
-                      value={gatewayModel}
-                      onChange={e => {
-                        saveGatewayToLocalStorage({ model: e.target.value });
-                        setConnectionTestResult(null);
-                      }}
-                      className="w-full bg-[#181c28] border border-[#262c3e] rounded-xl p-2 text-xs text-white font-mono placeholder-neutral-600 focus:outline-none focus:border-purple-500"
-                    />
-                  </div>
-
-                  {/* API Key */}
-                  {providerType !== 'simulation' && (
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <label className="text-neutral-400 text-[11px]">API Key</label>
-                        <button
-                          type="button"
-                          onClick={() => setShowApiKey(!showApiKey)}
-                          className="text-[10px] text-neutral-400 hover:text-neutral-200 flex items-center gap-1"
-                        >
-                          {showApiKey ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                          <span>{showApiKey ? 'Hide' : 'Show'}</span>
-                        </button>
-                      </div>
-                      <input
-                        type={showApiKey ? 'text' : 'password'}
-                        placeholder="sk-..."
-                        value={gatewayApiKey}
-                        onChange={e => {
-                          saveGatewayToLocalStorage({ apiKey: e.target.value });
-                          setConnectionTestResult(null);
-                        }}
-                        className="w-full bg-[#181c28] border border-[#262c3e] rounded-xl p-2 text-xs text-white font-mono placeholder-neutral-600 focus:outline-none focus:border-purple-500"
-                      />
-                    </div>
-                  )}
-
-                  {/* Local Storage Auto-save Note */}
-                  <div className="flex items-center justify-between text-[11px] text-neutral-400 px-1">
-                    <span className="flex items-center gap-1 text-emerald-400">
-                      <Check className="w-3 h-3" />
-                      <span>Settings automatically saved to browser</span>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => saveGatewayToLocalStorage({})}
-                      className="text-purple-400 hover:text-purple-300 font-semibold underline text-[10px]"
-                    >
-                      Save Now
-                    </button>
-                  </div>
-
-                  {/* Test Connection Button */}
-                  <div className="pt-1">
-                    <button
-                      type="button"
-                      onClick={handleTestAIConnection}
-                      disabled={isTestingConnection}
-                      className="w-full py-2 bg-purple-700 hover:bg-purple-600 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer"
-                    >
-                      <Zap className="w-3.5 h-3.5 fill-white" />
-                      <span>{isTestingConnection ? 'Testing Connection...' : 'Test Connection'}</span>
-                    </button>
-
-                    {/* Connection Test Feedback */}
-                    {connectionTestResult && (
-                      <div
-                        className={`mt-2 p-2.5 rounded-xl text-[11px] leading-relaxed border ${
-                          connectionTestResult.success
-                            ? 'bg-emerald-950/60 border-emerald-800/50 text-emerald-300'
-                            : 'bg-rose-950/60 border-rose-800/50 text-rose-300'
-                        }`}
-                      >
-                        <div className="font-bold flex items-center gap-1">
-                          {connectionTestResult.success ? '✓ Operational' : '✕ Connection Issue'}
-                          {connectionTestResult.latencyMs !== undefined && (
-                            <span className="font-mono text-[10px] opacity-80">
-                              ({connectionTestResult.latencyMs}ms)
-                            </span>
-                          )}
+                            className="w-full bg-[#181c28] border border-[#262c3e] rounded-xl p-2 text-xs text-white font-mono placeholder-neutral-600 focus:outline-none focus:border-purple-500"
+                          />
                         </div>
-                        <p className="mt-0.5">{connectionTestResult.message}</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
+                      )}
 
-                {/* Custom Bot Prompt / Rules (Information for bot or rules for botchat) */}
-                <div className="space-y-2.5 pt-2 border-t border-[#1a1d27]">
-                  <div className="flex items-center justify-between">
-                    <span className="text-neutral-300 font-semibold flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5 text-purple-400" />
-                      <span>Custom Prompt & Bot Rules</span>
-                    </span>
-                    <span className="text-[10px] text-neutral-500 font-mono">Injected into System</span>
-                  </div>
-
-                  {/* Preset Selector & Global Save */}
-                  <div className="space-y-1.5 bg-[#141724] p-2.5 rounded-xl border border-[#222738]">
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="text-neutral-400 font-semibold">Rules Preset</span>
-                      <button
-                        type="button"
-                        onClick={() => setIsSavingPreset(!isSavingPreset)}
-                        className="text-purple-400 hover:text-purple-300 font-semibold text-[10px] cursor-pointer"
-                      >
-                        {isSavingPreset ? 'Cancel' : '+ Save as Preset'}
-                      </button>
-                    </div>
-
-                    {isSavingPreset && (
-                      <div className="flex items-center gap-1.5 pt-1 pb-1">
+                      {/* Model ID */}
+                      <div>
+                        <label className="text-neutral-400 block mb-1 text-[11px]">Custom Model Name</label>
                         <input
                           type="text"
-                          value={newPresetName}
-                          onChange={e => setNewPresetName(e.target.value)}
-                          placeholder="Preset name (e.g. My Style)..."
-                          className="flex-1 bg-[#0c0e14] border border-[#262c3e] rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-purple-500"
+                          placeholder="e.g. meta-llama/llama-3.3-70b-instruct"
+                          value={gatewayModel}
+                          onChange={e => {
+                            saveGatewayToLocalStorage({ model: e.target.value });
+                            setConnectionTestResult(null);
+                          }}
+                          className="w-full bg-[#181c28] border border-[#262c3e] rounded-xl p-2 text-xs text-white font-mono placeholder-neutral-600 focus:outline-none focus:border-purple-500"
                         />
+                      </div>
+
+                      {/* API Key */}
+                      {providerType !== 'simulation' && (
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="text-neutral-400 text-[11px]">API Key</label>
+                            <button
+                              type="button"
+                              onClick={() => setShowApiKey(!showApiKey)}
+                              className="text-[10px] text-neutral-400 hover:text-neutral-200 flex items-center gap-1"
+                            >
+                              {showApiKey ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                              <span>{showApiKey ? 'Hide' : 'Show'}</span>
+                            </button>
+                          </div>
+                          <input
+                            type={showApiKey ? 'text' : 'password'}
+                            placeholder="sk-..."
+                            value={gatewayApiKey}
+                            onChange={e => {
+                              saveGatewayToLocalStorage({ apiKey: e.target.value });
+                              setConnectionTestResult(null);
+                            }}
+                            className="w-full bg-[#181c28] border border-[#262c3e] rounded-xl p-2 text-xs text-white font-mono placeholder-neutral-600 focus:outline-none focus:border-purple-500"
+                          />
+                        </div>
+                      )}
+
+                      {/* Auto-save & Test button */}
+                      <div className="pt-1 space-y-2">
                         <button
                           type="button"
-                          onClick={handleSaveCurrentAsPreset}
-                          className="px-2.5 py-1 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded-lg cursor-pointer shrink-0"
+                          onClick={handleTestAIConnection}
+                          disabled={isTestingConnection}
+                          className="w-full py-2 bg-purple-700 hover:bg-purple-600 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer"
                         >
-                          Save
+                          <Zap className="w-3.5 h-3.5 fill-white" />
+                          <span>{isTestingConnection ? 'Testing Connection...' : 'Test Connection'}</span>
                         </button>
+
+                        {connectionTestResult && (
+                          <div
+                            className={`p-2.5 rounded-xl text-[11px] leading-relaxed border ${
+                              connectionTestResult.success
+                                ? 'bg-emerald-950/60 border-emerald-800/50 text-emerald-300'
+                                : 'bg-rose-950/60 border-rose-800/50 text-rose-300'
+                            }`}
+                          >
+                            <div className="font-bold flex items-center gap-1">
+                              {connectionTestResult.success ? '✓ Operational' : '✕ Connection Issue'}
+                              {connectionTestResult.latencyMs !== undefined && (
+                                <span className="font-mono text-[10px] opacity-80">
+                                  ({connectionTestResult.latencyMs}ms)
+                                </span>
+                              )}
+                            </div>
+                            <p className="mt-0.5">{connectionTestResult.message}</p>
+                          </div>
+                        )}
                       </div>
-                    )}
-
-                    <CustomSelect
-                      value={selectedPresetId}
-                      onChange={val => handleSelectPreset(val)}
-                      placeholder="Select a rule preset..."
-                      options={[
-                        { value: '', label: 'None (Default / Custom Prompt)' },
-                        ...rulePresets.map(preset => ({
-                          value: preset.id,
-                          label: preset.name,
-                          description: preset.prompt ? preset.prompt.slice(0, 50) + (preset.prompt.length > 50 ? '...' : '') : undefined
-                        }))
-                      ]}
-                      className="bg-[#0c0e14] border-[#222736]"
-                    />
-                  </div>
-
-                  <p className="text-[11px] text-neutral-400 leading-tight">
-                    Add instructions, constraints, or formatting rules for the bot (applies to subsequent turns).
-                  </p>
-                  <textarea
-                    rows={4}
-                    value={customPrompt}
-                    onChange={e => {
-                      setCustomPrompt(e.target.value);
-                      setSelectedPresetId('');
-                      const updated = {
-                        ...conversation,
-                        customPrompt: e.target.value
-                      };
-                      onUpdateConversation(updated);
-                    }}
-                    placeholder="e.g. Add scene header with [Date & Time: ... | Location: ...]. Use *italic* for actions, &quot;quotes&quot; for dialogue, [Name] tags."
-                    className="w-full bg-[#181c28] border border-[#262c3e] rounded-xl p-2.5 text-xs text-white placeholder-neutral-600 focus:outline-none focus:border-purple-500 resize-y font-sans leading-relaxed"
-                  />
-                  {customPrompt && (
-                    <div className="flex items-center justify-between text-[10px] text-neutral-400 pt-0.5">
-                      <span className="text-emerald-400 flex items-center gap-1">
-                        <Check className="w-3 h-3" /> Rule active for subsequent turns
-                      </span>
-                      <button
-                        onClick={() => {
-                          setCustomPrompt('');
-                          setSelectedPresetId('');
-                          onUpdateConversation({ ...conversation, customPrompt: '' });
-                        }}
-                        className="text-neutral-500 hover:text-rose-400 transition-colors cursor-pointer"
-                      >
-                        Clear rule
-                      </button>
                     </div>
                   )}
                 </div>
 
-                {/* Generation Settings */}
-                <div className="space-y-3 pt-2 border-t border-[#1a1d27]">
-                  <span className="text-neutral-400 font-semibold block">Generation Tuning</span>
-
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-neutral-300">
-                      <span>Temperature</span>
-                      <span className="font-mono text-purple-400">{temperature}</span>
+                {/* 2. VOICE & AUDIO (KOKORO TTS) CARD */}
+                <div className="bg-[#12151e] border border-[#1e2330] rounded-2xl overflow-hidden transition-all">
+                  <button
+                    type="button"
+                    onClick={() => toggleAccordion('voice')}
+                    className="w-full p-3.5 flex items-center justify-between hover:bg-[#161a26] transition-colors cursor-pointer select-none text-left"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Volume2 className="w-4 h-4 text-pink-400 shrink-0" />
+                      <span className="font-bold text-white text-xs">Voice & Audio (Kokoro TTS)</span>
                     </div>
-                    <input
-                      type="range"
-                      min="0"
-                      max="1.5"
-                      step="0.05"
-                      value={temperature}
-                      onChange={e => setTemperature(parseFloat(e.target.value))}
-                      className="w-full accent-purple-500 cursor-pointer"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-neutral-300">
-                      <span>Max Tokens</span>
-                      <span className="font-mono text-purple-400">{maxTokens}</span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                        ttsConfig.enabled
+                          ? 'bg-pink-500/20 text-pink-300 border border-pink-500/30'
+                          : 'bg-neutral-800/80 text-neutral-400 border border-neutral-700/40'
+                      }`}>
+                        {ttsConfig.enabled ? (KOKORO_VOICES.find(v => v.id === ttsConfig.voiceId)?.name || 'On') : 'Off'}
+                      </span>
+                      <ChevronDown className={`w-3.5 h-3.5 text-neutral-400 transition-transform duration-200 ${openAccordions.voice ? 'rotate-180' : ''}`} />
                     </div>
-                    <input
-                      type="range"
-                      min="256"
-                      max="8192"
-                      step="128"
-                      value={maxTokens}
-                      onChange={e => setMaxTokens(parseInt(e.target.value))}
-                      className="w-full accent-purple-500 cursor-pointer"
-                    />
-                  </div>
+                  </button>
+
+                  {openAccordions.voice && (
+                    <div className="p-3.5 pt-1 space-y-3 border-t border-[#1a1d27]/70">
+                      {/* Master Enable Toggle */}
+                      <div className="flex items-center justify-between p-2.5 rounded-xl bg-[#161a28] border border-[#23293e]">
+                        <div>
+                          <div className="font-bold text-white text-xs">Enable AI Voice</div>
+                          <div className="text-[10px] text-neutral-400">Reads character dialogue during roleplay</div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => updateTtsConfig({ enabled: !ttsConfig.enabled })}
+                          className={`w-11 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors ${
+                            ttsConfig.enabled ? 'bg-pink-600 justify-end' : 'bg-neutral-700 justify-start'
+                          }`}
+                        >
+                          <motion.div layout className="w-4 h-4 rounded-full bg-white shadow-md" />
+                        </button>
+                      </div>
+
+                      {ttsConfig.enabled && (
+                        <>
+                          {/* Auto-play toggle */}
+                          <div className="flex items-center justify-between px-1">
+                            <span className="text-neutral-300 text-[11px]">Auto-play on new message</span>
+                            <input
+                              type="checkbox"
+                              checked={ttsConfig.autoPlay}
+                              onChange={e => updateTtsConfig({ autoPlay: e.target.checked })}
+                              className="accent-pink-500 rounded cursor-pointer"
+                            />
+                          </div>
+
+                          {/* Dialogue-only toggle */}
+                          <div className="flex items-center justify-between px-1">
+                            <div>
+                              <span className="text-neutral-300 text-[11px] block">Read dialogue only ("...")</span>
+                              <span className="text-[10px] text-neutral-500">Skips *actions* and scene descriptions</span>
+                            </div>
+                            <input
+                              type="checkbox"
+                              checked={ttsConfig.dialogueOnly}
+                              onChange={e => updateTtsConfig({ dialogueOnly: e.target.checked })}
+                              className="accent-pink-500 rounded cursor-pointer"
+                            />
+                          </div>
+
+                          {/* Voice Profile Selector */}
+                          <div>
+                            <label className="text-neutral-400 block mb-1 text-[11px]">Kokoro Character Voice Archetype</label>
+                            <CustomSelect
+                              value={ttsConfig.voiceId}
+                              onChange={val => updateTtsConfig({ voiceId: val })}
+                              options={KOKORO_VOICES.map(v => ({
+                                value: v.id,
+                                label: `${v.name} (${v.archetype})`,
+                                description: v.description
+                              }))}
+                              className="bg-[#181c28] border-[#262c3e]"
+                            />
+                          </div>
+
+                          {/* Pitch Slider */}
+                          <div className="space-y-1">
+                            <div className="flex justify-between text-neutral-300 text-[11px]">
+                              <span>Pitch (Tone Depth)</span>
+                              <span className="font-mono text-pink-400">{ttsConfig.pitch.toFixed(2)}x</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="0.6"
+                              max="1.4"
+                              step="0.05"
+                              value={ttsConfig.pitch}
+                              onChange={e => updateTtsConfig({ pitch: parseFloat(e.target.value) })}
+                              className="w-full accent-pink-500 cursor-pointer"
+                            />
+                            <div className="flex justify-between text-[9px] text-neutral-500 font-mono">
+                              <span>Deeper (MILF / Beast)</span>
+                              <span>Higher (Girlfriend)</span>
+                            </div>
+                          </div>
+
+                          {/* Speed Slider */}
+                          <div className="space-y-1">
+                            <div className="flex justify-between text-neutral-300 text-[11px]">
+                              <span>Speech Speed</span>
+                              <span className="font-mono text-pink-400">{ttsConfig.speed.toFixed(2)}x</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="0.7"
+                              max="1.5"
+                              step="0.05"
+                              value={ttsConfig.speed}
+                              onChange={e => updateTtsConfig({ speed: parseFloat(e.target.value) })}
+                              className="w-full accent-pink-500 cursor-pointer"
+                            />
+                          </div>
+
+                          {/* Engine Type */}
+                          <div>
+                            <label className="text-neutral-400 block mb-1 text-[11px]">Speech Engine</label>
+                            <CustomSelect
+                              value={ttsConfig.engine}
+                              onChange={(val: any) => updateTtsConfig({ engine: val })}
+                              options={[
+                                { value: 'browser', label: 'Built-in Native Web Speech', description: 'Zero MB download, 100% offline & instant' },
+                                { value: 'kokoro-endpoint', label: 'Kokoro Server Endpoint (OpenAI TTS format)', description: 'Connect local Kokoro-FastAPI or cloud endpoint' }
+                              ]}
+                              className="bg-[#181c28] border-[#262c3e]"
+                            />
+                          </div>
+
+                          {ttsConfig.engine === 'kokoro-endpoint' && (
+                            <div>
+                              <label className="text-neutral-400 block mb-1 text-[11px]">Kokoro Endpoint URL</label>
+                              <input
+                                type="text"
+                                placeholder="http://localhost:8880/v1/audio/speech"
+                                value={ttsConfig.kokoroEndpoint}
+                                onChange={e => updateTtsConfig({ kokoroEndpoint: e.target.value })}
+                                className="w-full bg-[#181c28] border border-[#262c3e] rounded-xl p-2 text-xs text-white font-mono placeholder-neutral-600 focus:outline-none focus:border-pink-500"
+                              />
+                            </div>
+                          )}
+
+                          {/* Test Voice Button */}
+                          <button
+                            type="button"
+                            onClick={handleTestVoice}
+                            className="w-full py-2 bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+                          >
+                            <Play className="w-3.5 h-3.5 fill-current" />
+                            <span>Listen to Voice Sample</span>
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
 
-                {/* Chat Tools */}
-                <div className="space-y-2 pt-2 border-t border-[#1a1d27]">
-                  <span className="text-neutral-400 font-semibold block mb-1">Chat Controls</span>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={() => handleRegenerate()}
-                      disabled={isGenerating}
-                      className="py-2 bg-[#131620] hover:bg-[#181c2a] border border-[#202534] rounded-xl text-xs font-semibold text-neutral-200 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5" />
-                      <span>Regenerate</span>
-                    </button>
+                {/* 3. ROLEPLAY PERSONA, SCENARIOS & CHATS CARD */}
+                <div className="bg-[#12151e] border border-[#1e2330] rounded-2xl overflow-hidden transition-all">
+                  <button
+                    type="button"
+                    onClick={() => toggleAccordion('persona')}
+                    className="w-full p-3.5 flex items-center justify-between hover:bg-[#161a26] transition-colors cursor-pointer select-none text-left"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <UserCheck className="w-4 h-4 text-indigo-400 shrink-0" />
+                      <span className="font-bold text-white text-xs">Persona & Scenarios</span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-[10px] text-indigo-300 font-medium truncate max-w-[120px]">
+                        {currentPersona?.name || 'Persona'}
+                      </span>
+                      <ChevronDown className={`w-3.5 h-3.5 text-neutral-400 transition-transform duration-200 ${openAccordions.persona ? 'rotate-180' : ''}`} />
+                    </div>
+                  </button>
 
-                    <button
-                      onClick={handleContinue}
-                      disabled={isGenerating}
-                      className="py-2 bg-[#131620] hover:bg-[#181c2a] border border-[#202534] rounded-xl text-xs font-semibold text-neutral-200 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-                    >
-                      <span>↳ Continue</span>
-                    </button>
+                  {openAccordions.persona && (
+                    <div className="p-3.5 pt-1 space-y-3 border-t border-[#1a1d27]/70">
+                      {/* Active Persona dropdown */}
+                      <div>
+                        <label className="text-neutral-400 font-semibold block mb-1 text-[11px]">Active Persona</label>
+                        <CustomSelect
+                          value={activePersonaId}
+                          onChange={newId => handleSwitchPersona(newId)}
+                          options={allPersonas.map(p => ({
+                            value: p.id,
+                            label: p.name,
+                            description: p.shortDescription ? p.shortDescription.slice(0, 50) + (p.shortDescription.length > 50 ? '...' : '') : undefined
+                          }))}
+                          className="bg-[#181c28] border-[#262c3e]"
+                        />
+                      </div>
 
-                    <button
-                      type="button"
-                      onClick={() => setIsExportTranscriptOpen(true)}
-                      className="col-span-2 py-2 bg-[#131620] hover:bg-purple-900/30 hover:border-purple-500/40 border border-[#202534] rounded-xl text-xs font-semibold text-neutral-200 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs active:scale-98"
-                    >
-                      <Download className="w-3.5 h-3.5 text-purple-400" />
-                      <span>Export Chat Transcript</span>
-                    </button>
-                  </div>
+                      {/* Active Scenario dropdown */}
+                      <div>
+                        <label className="text-neutral-400 font-semibold block mb-1 text-[11px]">Active Scenario</label>
+                        <CustomSelect
+                          value={activeScenarioId}
+                          onChange={newId => handleSwitchScenario(newId, messages.length <= 1)}
+                          options={(character.scenarios || []).map(sc => ({
+                            value: sc.id,
+                            label: sc.title,
+                            description: sc.description ? sc.description.slice(0, 50) + (sc.description.length > 50 ? '...' : '') : undefined
+                          }))}
+                          className="bg-[#181c28] border-[#262c3e]"
+                        />
+                        {messages.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleSwitchScenario(activeScenarioId, true)}
+                            className="mt-2 w-full py-1.5 px-3 rounded-xl bg-purple-600/20 hover:bg-purple-600/35 border border-purple-500/35 text-purple-200 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95"
+                            title="Reset current conversation to this scenario's opening greeting"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5 text-purple-400" />
+                            <span>Reset Chat to This Scenario Greeting</span>
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Multi-chat session switcher */}
+                      <div className="pt-2 border-t border-[#1a1d27] space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-white flex items-center gap-1.5 text-xs">
+                            <MessageSquare className="w-3.5 h-3.5 text-purple-400" />
+                            <span>Chat Sessions ({allConversations.filter(c => c.characterId === character.id).length || 1})</span>
+                          </span>
+                        </div>
+
+                        {onStartNewChat && (
+                          <button
+                            onClick={() => {
+                              setRightPanel('hidden');
+                              onStartNewChat(character);
+                            }}
+                            className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-purple-700 to-indigo-600 hover:from-purple-600 hover:to-indigo-500 text-white font-bold flex items-center justify-center gap-1.5 text-xs shadow-sm transition-all cursor-pointer active:scale-95"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Start Another New Chat</span>
+                          </button>
+                        )}
+
+                        <div className="space-y-1 pt-1 max-h-36 overflow-y-auto">
+                          {[...allConversations]
+                            .filter(c => c.characterId === character.id)
+                            .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime())
+                            .map(conv => {
+                              const isSelected = conv.id === conversation.id;
+                              const convPersona = allPersonas.find(p => p.id === conv.personaId) || currentPersona;
+                              const lastMsg = conv.messages[conv.messages.length - 1];
+                              const sneakPeek = lastMsg
+                                ? lastMsg.content.replace(/[*#_`]/g, '').trim().slice(0, 60) + (lastMsg.content.length > 60 ? '...' : '')
+                                : 'No messages yet';
+
+                              return (
+                                <div
+                                  key={conv.id}
+                                  onClick={() => {
+                                    setRightPanel('hidden');
+                                    onSelectConversation && onSelectConversation(conv);
+                                  }}
+                                  className={`p-2 rounded-xl cursor-pointer transition-colors flex items-center justify-between gap-2 ${
+                                    isSelected
+                                      ? 'bg-purple-900/30 text-white border border-purple-500/40'
+                                      : 'bg-[#0d1017] hover:bg-[#151926] text-neutral-300'
+                                  }`}
+                                >
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-1 text-[11px] font-bold truncate">
+                                      <span>{convPersona?.name ? `as ${convPersona.name}` : (conv.title || 'Chat')}</span>
+                                      {isSelected && <span className="text-[9px] text-purple-400 font-mono">(active)</span>}
+                                    </div>
+                                    <p className="text-[10px] text-neutral-400 truncate">{sneakPeek}</p>
+                                  </div>
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    <span className="text-[9px] font-mono text-neutral-500">{conv.messages.length} msgs</span>
+                                    {onDeleteConversation && (
+                                      <button
+                                        type="button"
+                                        onClick={e => {
+                                          e.stopPropagation();
+                                          onDeleteConversation(conv.id);
+                                        }}
+                                        className="p-1 text-neutral-400 hover:text-rose-400 active:text-rose-400 rounded-md hover:bg-rose-500/15 transition-all cursor-pointer"
+                                        title="Delete this chat session"
+                                      >
+                                        <Trash2 className="w-3 h-3" />
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
+
+                {/* 4. GENERATION TUNING CARD */}
+                <div className="bg-[#12151e] border border-[#1e2330] rounded-2xl overflow-hidden transition-all">
+                  <button
+                    type="button"
+                    onClick={() => toggleAccordion('tuning')}
+                    className="w-full p-3.5 flex items-center justify-between hover:bg-[#161a26] transition-colors cursor-pointer select-none text-left"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Sliders className="w-4 h-4 text-cyan-400 shrink-0" />
+                      <span className="font-bold text-white text-xs">Generation Tuning</span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-[10px] text-neutral-400 font-mono">
+                        T: {temperature} • {maxTokens} tok
+                      </span>
+                      <ChevronDown className={`w-3.5 h-3.5 text-neutral-400 transition-transform duration-200 ${openAccordions.tuning ? 'rotate-180' : ''}`} />
+                    </div>
+                  </button>
+
+                  {openAccordions.tuning && (
+                    <div className="p-3.5 pt-1 space-y-3 border-t border-[#1a1d27]/70">
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-neutral-300 text-[11px]">
+                          <span>Temperature (Creativity)</span>
+                          <span className="font-mono text-purple-400">{temperature}</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="1.5"
+                          step="0.05"
+                          value={temperature}
+                          onChange={e => setTemperature(parseFloat(e.target.value))}
+                          className="w-full accent-purple-500 cursor-pointer"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-neutral-300 text-[11px]">
+                          <span>Max Response Tokens</span>
+                          <span className="font-mono text-purple-400">{maxTokens}</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="256"
+                          max="8192"
+                          step="128"
+                          value={maxTokens}
+                          onChange={e => setMaxTokens(parseInt(e.target.value))}
+                          className="w-full accent-purple-500 cursor-pointer"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 5. CUSTOM PROMPT & BOT RULES CARD */}
+                <div className="bg-[#12151e] border border-[#1e2330] rounded-2xl overflow-hidden transition-all">
+                  <button
+                    type="button"
+                    onClick={() => toggleAccordion('prompt')}
+                    className="w-full p-3.5 flex items-center justify-between hover:bg-[#161a26] transition-colors cursor-pointer select-none text-left"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+                      <span className="font-bold text-white text-xs">Custom Prompt & Rules</span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                        customPrompt
+                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                          : 'bg-neutral-800 text-neutral-400'
+                      }`}>
+                        {customPrompt ? '1 Rule Active' : 'Default'}
+                      </span>
+                      <ChevronDown className={`w-3.5 h-3.5 text-neutral-400 transition-transform duration-200 ${openAccordions.prompt ? 'rotate-180' : ''}`} />
+                    </div>
+                  </button>
+
+                  {openAccordions.prompt && (
+                    <div className="p-3.5 pt-1 space-y-3 border-t border-[#1a1d27]/70">
+                      {/* Preset Selector */}
+                      <div className="space-y-1.5 bg-[#141724] p-2.5 rounded-xl border border-[#222738]">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-neutral-400 font-semibold">Rules Preset</span>
+                          <button
+                            type="button"
+                            onClick={() => setIsSavingPreset(!isSavingPreset)}
+                            className="text-purple-400 hover:text-purple-300 font-semibold text-[10px] cursor-pointer"
+                          >
+                            {isSavingPreset ? 'Cancel' : '+ Save as Preset'}
+                          </button>
+                        </div>
+
+                        {isSavingPreset && (
+                          <div className="flex items-center gap-1.5 pt-1 pb-1">
+                            <input
+                              type="text"
+                              value={newPresetName}
+                              onChange={e => setNewPresetName(e.target.value)}
+                              placeholder="Preset name (e.g. My Style)..."
+                              className="flex-1 bg-[#0c0e14] border border-[#262c3e] rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-purple-500"
+                            />
+                            <button
+                              type="button"
+                              onClick={handleSaveCurrentAsPreset}
+                              className="px-2.5 py-1 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded-lg cursor-pointer shrink-0"
+                            >
+                              Save
+                            </button>
+                          </div>
+                        )}
+
+                        <CustomSelect
+                          value={selectedPresetId}
+                          onChange={val => handleSelectPreset(val)}
+                          placeholder="Select a rule preset..."
+                          options={[
+                            { value: '', label: 'None (Default / Custom Prompt)' },
+                            ...rulePresets.map(preset => ({
+                              value: preset.id,
+                              label: preset.name,
+                              description: preset.prompt ? preset.prompt.slice(0, 50) + (preset.prompt.length > 50 ? '...' : '') : undefined
+                            }))
+                          ]}
+                          className="bg-[#0c0e14] border-[#222736]"
+                        />
+                      </div>
+
+                      <textarea
+                        rows={4}
+                        value={customPrompt}
+                        onChange={e => {
+                          setCustomPrompt(e.target.value);
+                          setSelectedPresetId('');
+                          onUpdateConversation({ ...conversation, customPrompt: e.target.value });
+                        }}
+                        placeholder="e.g. Use *italic* for actions, &quot;quotes&quot; for dialogue, [Name] tags."
+                        className="w-full bg-[#181c28] border border-[#262c3e] rounded-xl p-2.5 text-xs text-white placeholder-neutral-600 focus:outline-none focus:border-purple-500 resize-y font-sans leading-relaxed"
+                      />
+                      {customPrompt && (
+                        <div className="flex items-center justify-between text-[10px] text-neutral-400 pt-0.5">
+                          <span className="text-emerald-400 flex items-center gap-1">
+                            <Check className="w-3 h-3" /> Rule active for subsequent turns
+                          </span>
+                          <button
+                            onClick={() => {
+                              setCustomPrompt('');
+                              setSelectedPresetId('');
+                              onUpdateConversation({ ...conversation, customPrompt: '' });
+                            }}
+                            className="text-neutral-500 hover:text-rose-400 transition-colors cursor-pointer"
+                          >
+                            Clear rule
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* 6. TOKENS & COST OPTIMIZER CARD */}
+                <div className="bg-[#12151e] border border-[#1e2330] rounded-2xl overflow-hidden transition-all">
+                  <button
+                    type="button"
+                    onClick={() => toggleAccordion('tokens')}
+                    className="w-full p-3.5 flex items-center justify-between hover:bg-[#161a26] transition-colors cursor-pointer select-none text-left"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Coins className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span className="font-bold text-white text-xs">Tokens & Performance</span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-[10px] text-emerald-400 font-mono">
+                        {tokenPriceService.formatTokenCount(liveTokenStats.totalContextTokens)} tok
+                      </span>
+                      <ChevronDown className={`w-3.5 h-3.5 text-neutral-400 transition-transform duration-200 ${openAccordions.tokens ? 'rotate-180' : ''}`} />
+                    </div>
+                  </button>
+
+                  {openAccordions.tokens && (
+                    <div className="p-3.5 pt-1 space-y-3 border-t border-[#1a1d27]/70">
+                      {/* Price Counter grid */}
+                      <div className="p-3 bg-[#0d1017] border border-[#1b2132] rounded-xl space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-neutral-400 text-[11px]">Est. Cost / Turn:</span>
+                          <span className="text-purple-300 font-bold font-mono">{liveTokenStats.formattedTotalCost}</span>
+                        </div>
+                        {conversation.cumulativeUsage && conversation.cumulativeUsage.turnCount > 0 && (
+                          <div className="flex items-center justify-between text-[10.5px]">
+                            <span className="text-neutral-400">Total Spent ({conversation.cumulativeUsage.turnCount} turns):</span>
+                            <span className="text-amber-300 font-bold font-mono">
+                              {tokenPriceConfig.currency === 'IDR'
+                                ? tokenPriceService.formatRupiah(conversation.cumulativeUsage.totalCostIdr)
+                                : tokenPriceService.formatCost(conversation.cumulativeUsage.totalCostUsd, 'USD')}
+                            </span>
+                          </div>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setIsTokenCounterOpen(true)}
+                          className="w-full py-1.5 rounded-lg bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 text-[10.5px] font-semibold flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                        >
+                          <Calculator className="w-3 h-3" />
+                          <span>Detailed Token & Price Calculator</span>
+                        </button>
+                      </div>
+
+                      {/* Token Optimizer Slider */}
+                      <TokenOptimizerSlider
+                        value={conversation.tokenOptimizer || storageService.getTokenOptimizerLevel()}
+                        liveResult={tokenOptimizerService.optimizeContext({
+                          character,
+                          scenario: currentScenario,
+                          persona: currentPersona,
+                          lorebooks,
+                          conversation: { ...conversation, messages },
+                          customRules: customPrompt,
+                          level: conversation.tokenOptimizer || storageService.getTokenOptimizerLevel()
+                        })}
+                        onChange={newLevel => {
+                          storageService.setTokenOptimizerLevel(newLevel);
+                          onUpdateConversation({ ...conversation, tokenOptimizer: newLevel });
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* 7. CHAT CONTROLS & EXPORT CARD */}
+                <div className="bg-[#12151e] border border-[#1e2330] rounded-2xl overflow-hidden transition-all">
+                  <button
+                    type="button"
+                    onClick={() => toggleAccordion('tools')}
+                    className="w-full p-3.5 flex items-center justify-between hover:bg-[#161a26] transition-colors cursor-pointer select-none text-left"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Download className="w-4 h-4 text-purple-400 shrink-0" />
+                      <span className="font-bold text-white text-xs">Chat Controls & Export</span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-[10px] text-neutral-400">Tools</span>
+                      <ChevronDown className={`w-3.5 h-3.5 text-neutral-400 transition-transform duration-200 ${openAccordions.tools ? 'rotate-180' : ''}`} />
+                    </div>
+                  </button>
+
+                  {openAccordions.tools && (
+                    <div className="p-3.5 pt-1 space-y-2 border-t border-[#1a1d27]/70">
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => handleRegenerate()}
+                          disabled={isGenerating}
+                          className="py-2 bg-[#181c28] hover:bg-[#202638] border border-[#262c3e] rounded-xl text-xs font-semibold text-neutral-200 transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-40"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          <span>Regenerate</span>
+                        </button>
+
+                        <button
+                          onClick={handleContinue}
+                          disabled={isGenerating}
+                          className="py-2 bg-[#181c28] hover:bg-[#202638] border border-[#262c3e] rounded-xl text-xs font-semibold text-neutral-200 transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-40"
+                        >
+                          <span>↳ Continue</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setIsExportTranscriptOpen(true)}
+                          className="col-span-2 py-2 bg-purple-900/20 hover:bg-purple-900/35 hover:border-purple-500/40 border border-purple-500/25 rounded-xl text-xs font-semibold text-purple-200 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs active:scale-98"
+                        >
+                          <Download className="w-3.5 h-3.5 text-purple-400" />
+                          <span>Export Chat Transcript</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
               </div>
             )}
 

@@ -20,46 +20,32 @@ export function isDefaultPlaceholderAvatar(url?: string | null): boolean {
 }
 
 /**
- * Promotes low-resolution thumbnail URLs to full high-resolution artwork URLs
- * - Datacat / JanitorAI: replaces /thumb.webp or /avatar.webp with /card.webp
- * - Charhub / Chub.ai: replaces /avatar.webp with /chara_card_v2.png or /avatar_raw.webp
+ * Safely resolves image URLs without forcibly breaking working thumbnails.
+ * Preserves the working CDN source directly so images load reliably across web and mobile.
  */
 export function getHighResImageUrl(url?: string | null): string {
   if (!url) return '';
   const trimmed = url.trim();
   if (!trimmed) return '';
 
-  // 1. Charhub / Chub.ai upgrade: replace 100px avatar.webp with full HD character card
-  if (trimmed.includes('charhub.io') && trimmed.includes('/avatar.webp')) {
-    return trimmed.replace('/avatar.webp', '/chara_card_v2.png');
+  // Unsplash high quality parameter
+  if (trimmed.includes('images.unsplash.com')) {
+    return trimmed
+      .replace(/([?&])w=\d+/g, '$1w=1080')
+      .replace(/([?&])q=\d+/g, '$1q=85');
   }
 
-  // 2. Janitor AI / Datacat upgrade: replace thumb or avatar with full card.webp
-  if (trimmed.includes('/thumb.webp')) {
-    return trimmed.replace('/thumb.webp', '/card.webp');
-  }
-  if (trimmed.includes('/avatar.webp') && !trimmed.includes('charhub.io')) {
-    return trimmed.replace('/avatar.webp', '/card.webp');
-  }
-
+  // Preserve working thumbnail / avatar URLs directly to prevent 404 card.webp errors
   return trimmed;
 }
 
 /**
- * Provides next fallback URL in the resolution cascade if the high-res image 404s
+ * Provides next fallback URL in the resolution cascade if the image fails to load
  */
 export function getFallbackImageUrl(currentUrl: string): string | null {
   if (!currentUrl) return null;
 
-  // If chara_card_v2.png fails on charhub, try avatar_raw.webp, then avatar.webp
-  if (currentUrl.includes('/chara_card_v2.png')) {
-    return currentUrl.replace('/chara_card_v2.png', '/avatar_raw.webp');
-  }
-  if (currentUrl.includes('/avatar_raw.webp')) {
-    return currentUrl.replace('/avatar_raw.webp', '/avatar.webp');
-  }
-
-  // If card.webp fails on Janitor/Datacat, try thumb.webp, then avatar.webp
+  // If card.webp was attempted and failed, fall back to thumb.webp then avatar.webp
   if (currentUrl.includes('/card.webp')) {
     return currentUrl.replace('/card.webp', '/thumb.webp');
   }
@@ -67,6 +53,13 @@ export function getFallbackImageUrl(currentUrl: string): string | null {
     return currentUrl.replace('/thumb.webp', '/avatar.webp');
   }
 
+  // If chara_card_v2.png failed on charhub, fall back to avatar.webp
+  if (currentUrl.includes('/chara_card_v2.png')) {
+    return currentUrl.replace('/chara_card_v2.png', '/avatar.webp');
+  }
+  if (currentUrl.includes('/avatar_raw.webp')) {
+    return currentUrl.replace('/avatar_raw.webp', '/avatar.webp');
+  }
+
   return null;
 }
-

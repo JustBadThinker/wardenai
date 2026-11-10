@@ -387,7 +387,7 @@ export const CharacterProfileView: React.FC<CharacterProfileViewProps> = ({
           onError={handleBannerError}
           onClick={() => setLightboxImage({ url: bannerSrc || getHighResImageUrl(character.coverUrl || character.avatarUrl), title: character.name })}
           className="w-full h-full object-cover object-top cursor-pointer hover:scale-105 transition-transform duration-500"
-          title="Click to view full HD artwork"
+          title="Click to view artwork"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-[#0c0e14] via-[#0c0e14]/40 to-black/50" />
 

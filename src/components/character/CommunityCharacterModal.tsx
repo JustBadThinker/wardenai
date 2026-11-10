@@ -217,7 +217,7 @@ export const CommunityCharacterModal: React.FC<CommunityCharacterModalProps> = (
                 className={`relative h-36 sm:h-60 w-full bg-[#0c0e14] shrink-0 overflow-hidden ${
                   !shouldBlur ? 'cursor-pointer group' : ''
                 }`}
-                title={!shouldBlur ? 'Click to view & download HD artwork' : undefined}
+                title={!shouldBlur ? 'Click to view & download artwork' : undefined}
               >
                 <img
                   src={bannerSrc || getHighResImageUrl(detail?.avatarUrl || character.avatarUrl)}
@@ -255,7 +255,7 @@ export const CommunityCharacterModal: React.FC<CommunityCharacterModalProps> = (
                       setIsLightboxOpen(true);
                     }}
                     className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-black/60 hover:bg-black/80 backdrop-blur-md border border-white/10 flex items-center justify-center text-neutral-300 hover:text-white transition-all cursor-pointer active:scale-95"
-                    title="View & Download HD Artwork"
+                    title="View & Download Artwork"
                   >
                     <Download className="w-4 h-4 text-purple-300" />
                   </button>
@@ -554,7 +554,7 @@ export const CommunityCharacterModal: React.FC<CommunityCharacterModalProps> = (
                   Character Media Gallery ({communityGallery.length})
                 </h4>
                 <span className="text-[11px] text-neutral-400">
-                  Tap to preview in HD & download
+                  Tap to preview & download
                 </span>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
