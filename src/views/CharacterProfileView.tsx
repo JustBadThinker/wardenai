@@ -37,6 +37,7 @@ import { Character, CharacterScenario, CharacterReview, Persona, User as UserMod
 import { RichTextRenderer } from '../components/common/RichTextRenderer';
 import { cleanCreatorHandle } from '../services/aiProviderService';
 import { storageService } from '../services/storageService';
+import { communityCatalogService, CommunityCharacter } from '../services/communityCatalogService';
 import { ImageLightboxModal } from '../components/common/ImageLightboxModal';
 import {
   buildJanitorCreationFields,
@@ -202,6 +203,53 @@ export const CharacterProfileView: React.FC<CharacterProfileViewProps> = ({
   );
   const galleryImages = useMemo(() => extractCharacterGallery(character), [character]);
 
+  // Auto-enrich scenarios if character has 1 scenario but alternate greetings exist in community catalog
+  useEffect(() => {
+    if (!character.scenarios || character.scenarios.length <= 1) {
+      communityCatalogService.getCharacters({ search: character.name }).then(async ({ characters: results }) => {
+        const match = results.find(
+          (r: CommunityCharacter) => r.name.toLowerCase().trim() === character.name.toLowerCase().trim()
+        );
+        if (match) {
+          const detail = await communityCatalogService.getCharacterDetail(match.id);
+          if (detail?.alternateGreetings && detail.alternateGreetings.length > 0) {
+            const enrichedScenarios: CharacterScenario[] = [
+              character.scenarios?.[0] || {
+                id: 'sc_' + Date.now().toString(36) + '_1',
+                characterId: character.id,
+                title: 'Initial Encounter',
+                description: character.shortDescription || 'Default opening scenario.',
+                openingMessage: character.firstMessage || detail.firstMessage,
+                scenarioInstructions: 'Default opening scenario.',
+                displayOrder: 1,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+              }
+            ];
+            detail.alternateGreetings.forEach((greet, idx) => {
+              if (!greet || !greet.trim()) return;
+              const firstLine = greet.trim().split('\n')[0].replace(/^[*_#>\-\s]+|[*_#>\-\s]+$/g, '').slice(0, 36).trim();
+              enrichedScenarios.push({
+                id: 'sc_' + Date.now().toString(36) + '_' + (idx + 2),
+                characterId: character.id,
+                title: firstLine ? `Alternate ${idx + 1}: ${firstLine}` : `Alternate Scenario ${idx + 1}`,
+                description: `Alternate opening greeting #${idx + 1}.`,
+                openingMessage: greet.trim(),
+                scenarioInstructions: 'Alternative opening scenario.',
+                displayOrder: idx + 2,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+              });
+            });
+            const updated = { ...character, scenarios: enrichedScenarios };
+            storageService.upsertCharacter(updated);
+            setSelectedScenario(enrichedScenarios[0]);
+          }
+        }
+      }).catch(() => {});
+    }
+  }, [character.id, character.name]);
+
   // Reviews & Ratings State
   const [reviews, setReviews] = useState<CharacterReview[]>(() =>
     storageService.getCharacterReviews(character.id)
@@ -302,7 +350,7 @@ export const CharacterProfileView: React.FC<CharacterProfileViewProps> = ({
   const isMature = character.contentRating === 'Mature' || character.contentRating === 'NSFW';
 
   return (
-    <div className="relative min-h-screen w-full max-w-full overflow-x-hidden bg-[#0c0e14] pb-24 text-neutral-200 select-none">
+    <div className="relative min-h-screen w-full max-w-full overflow-x-hidden bg-[#0c0e14] pb-10 text-neutral-200 select-none">
       {/* Top Banner Image with Back & Actions */}
       <div className="relative w-full h-64 sm:h-80 md:h-96 overflow-hidden bg-[#090b10]">
         <img
@@ -1325,23 +1373,6 @@ export const CharacterProfileView: React.FC<CharacterProfileViewProps> = ({
         </div>
       )}
 
-      {/* Mobile Floating Sticky Bottom Chat Bar */}
-      <div className="fixed bottom-0 inset-x-0 p-3 bg-[#0d1018]/95 backdrop-blur-xl border-t border-white/10 z-30 flex items-center gap-2.5 sm:hidden">
-        <button
-          onClick={() => onToggleBookmark(character.id)}
-          className="w-10 h-10 rounded-xl bg-[#161a26] border border-[#222736] flex items-center justify-center text-neutral-300 active:scale-95 transition-all"
-          title={isBookmarked ? 'Bookmarked' : 'Bookmark'}
-        >
-          <Bookmark className={`w-4 h-4 ${isBookmarked ? 'fill-purple-400 text-purple-400' : ''}`} />
-        </button>
-        <button
-          onClick={handleStartChat}
-          className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-purple-600/35 active:scale-95 transition-all cursor-pointer"
-        >
-          <Play className="w-4 h-4 fill-current" />
-          <span>Start Chat</span>
-        </button>
-      </div>
 
       {/* Lightbox Modal for HD character preview & download */}
       <ImageLightboxModal

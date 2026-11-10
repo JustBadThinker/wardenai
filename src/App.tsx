@@ -501,6 +501,7 @@ export default function App() {
             senderRole: 'assistant',
             senderId: char.id,
             content: initialText,
+            rawTemplate: rawInitialText,
             timestamp: 'Today at ' + new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
           }
         ]
@@ -632,8 +633,50 @@ export default function App() {
   };
 
   const handleDirectImportCard = (data: ImportedCardData) => {
-    const charId = 'char_' + Date.now().toString(36);
+    // Check if a character with the same name already exists in library to preserve stats & merge
+    const existing = characters.find(
+      c => c.name.toLowerCase().trim() === data.name.toLowerCase().trim()
+    );
+    const charId = existing ? existing.id : 'char_' + Date.now().toString(36);
+
+    // Build comprehensive scenarios: Primary opening message + all alternate greetings
+    const initialScenarios: CharacterScenario[] = [
+      {
+        id: 'sc_' + Date.now().toString(36) + '_1',
+        characterId: charId,
+        title: 'Initial Encounter',
+        description: data.shortDescription ? data.shortDescription.slice(0, 160) : 'Default opening situation.',
+        openingMessage: data.firstMessage,
+        scenarioInstructions: 'Default opening scenario.',
+        displayOrder: 1,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }
+    ];
+
+    if (Array.isArray(data.alternateGreetings) && data.alternateGreetings.length > 0) {
+      data.alternateGreetings.forEach((greeting, idx) => {
+        if (!greeting || typeof greeting !== 'string' || !greeting.trim()) return;
+        const cleanGreeting = greeting.trim();
+        // Generate a clean title from the first sentence or heading if present
+        const firstLine = cleanGreeting.split('\n')[0].replace(/^[*_#>\-\s]+|[*_#>\-\s]+$/g, '').slice(0, 36).trim();
+        const scenarioTitle = firstLine ? `Alternate ${idx + 1}: ${firstLine}` : `Alternate Scenario ${idx + 1}`;
+        initialScenarios.push({
+          id: 'sc_' + Date.now().toString(36) + '_' + (idx + 2),
+          characterId: charId,
+          title: scenarioTitle,
+          description: `Alternate opening greeting context #${idx + 1}.`,
+          openingMessage: cleanGreeting,
+          scenarioInstructions: 'Alternative opening scenario.',
+          displayOrder: idx + 2,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        });
+      });
+    }
+
     const newChar: Character = {
+      ...(existing || {}),
       id: charId,
       creatorId: currentUser.id,
       creatorUsername: data.creatorUsername || currentUser.username,
@@ -651,24 +694,12 @@ export default function App() {
       contentRating: data.contentRating,
       visibility: 'public',
       publicationStatus: 'published',
-      scenarios: [
-        {
-          id: 'sc_' + Date.now().toString(36),
-          characterId: charId,
-          title: '1. Initial Encounter',
-          description: 'First meeting scenario.',
-          openingMessage: data.firstMessage,
-          scenarioInstructions: 'First meeting roleplay.',
-          displayOrder: 1,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        }
-      ],
+      scenarios: initialScenarios.length >= (existing?.scenarios?.length || 0) ? initialScenarios : existing!.scenarios,
       tagSlugs: data.tags.length > 0 ? data.tags : ['imported', 'jannyai'],
-      likeCount: 1,
-      bookmarkCount: 1,
-      chatCount: 0,
-      createdAt: new Date().toISOString(),
+      likeCount: existing?.likeCount || 1,
+      bookmarkCount: existing?.bookmarkCount || 1,
+      chatCount: existing?.chatCount || 0,
+      createdAt: existing?.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       age: data.age || 20
     };

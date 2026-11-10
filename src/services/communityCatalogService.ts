@@ -463,7 +463,13 @@ class CommunityCatalogService {
       personality: c.personality || '',
       scenario: c.scenario || '',
       descriptionHtml: c.descriptionHtml || c.description_html || c.description || '',
-      alternateGreetings: Array.isArray(c.alternateGreetings) ? c.alternateGreetings : []
+      alternateGreetings: Array.isArray(c.alternateGreetings)
+        ? c.alternateGreetings
+        : Array.isArray(c.alternate_greetings)
+        ? c.alternate_greetings
+        : Array.isArray(c.rawCardV2?.data?.alternate_greetings)
+        ? c.rawCardV2.data.alternate_greetings
+        : []
     };
   }
 
@@ -715,7 +721,12 @@ class CommunityCatalogService {
         detail?.rawCardV2?.data?.mes_example ||
         `<START>\n{{user}}: "Hello."\n{{char}}: *smiles warmly* "Greetings."`,
       firstMessage,
-      alternateGreetings: detail?.alternateGreetings || [],
+      alternateGreetings:
+        (Array.isArray(detail?.alternateGreetings) && detail.alternateGreetings.length > 0)
+          ? detail.alternateGreetings
+          : Array.isArray(detail?.rawCardV2?.data?.alternate_greetings)
+          ? detail.rawCardV2.data.alternate_greetings
+          : [],
       creatorNotes: `Imported from Datacat / JanitorAI community database. Original creator: @${cleanCreatorHandle(summary.creatorName)}`,
       creatorUsername: cleanCreatorHandle(summary.creatorName),
       tags: tagStrings,

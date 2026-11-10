@@ -182,6 +182,7 @@ export interface ChatMessage {
   personaId?: string;
   personaName?: string;
   content: string;
+  rawTemplate?: string; // Original opening template containing {{user}} or {{char}} placeholders
   thought?: string;
   timestamp: string;
   tokenCount?: number;

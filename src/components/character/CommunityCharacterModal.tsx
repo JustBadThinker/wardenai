@@ -494,9 +494,34 @@ export const CommunityCharacterModal: React.FC<CommunityCharacterModalProps> = (
                     key={idx}
                     className="p-3.5 bg-[#141824] border border-[#1e2334] rounded-xl text-neutral-300 leading-relaxed text-xs"
                   >
-                    <span className="text-[10px] font-bold text-purple-400 block mb-1.5">
-                      Greeting #{idx + 1}
-                    </span>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[10px] font-bold text-purple-400">
+                        Greeting #{idx + 1}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const baseDetail: CommunityCharacterDetail = detail || {
+                            id: character.id,
+                            firstMessage: greet,
+                            personality: character.shortDescription || '',
+                            scenario: '',
+                            descriptionHtml: '',
+                            alternateGreetings: []
+                          };
+                          const modifiedDetail: CommunityCharacterDetail = {
+                            ...baseDetail,
+                            firstMessage: greet
+                          };
+                          onStartChat(character, modifiedDetail);
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-purple-600/25 hover:bg-purple-600/40 text-purple-200 border border-purple-500/30 text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer active:scale-95"
+                        title="Start chat immediately with this alternate opening greeting"
+                      >
+                        <Play className="w-2.5 h-2.5 fill-current" />
+                        <span>Chat with this Greeting</span>
+                      </button>
+                    </div>
                     <RichTextRenderer content={greet} allowImages={true} />
                   </div>
                 ))}

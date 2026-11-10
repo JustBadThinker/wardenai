@@ -17,6 +17,8 @@ import {
   Brain,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
   Lock,
   UserCheck,
   ArrowLeft,
@@ -658,6 +660,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
           senderId: character.id,
           senderRole: 'assistant',
           content: opening,
+          rawTemplate: rawOpening,
           timestamp: 'Today at ' + new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
         };
         setMessages([initialMsg]);
@@ -682,6 +685,117 @@ export const ChatView: React.FC<ChatViewProps> = ({
       setActivePersonaId(persona.id);
     }
   }, [conversation.id, character.id, scenario?.id]);
+
+  // Helper to replace {{user}} and {{char}} in template text
+  const formatTemplateWithPersonaAndChar = (
+    template: string,
+    personaName: string,
+    characterName: string
+  ): string => {
+    return template
+      .replace(/`?\{\{user\}\}`?|`?\[\[user\]\]`?|<user>/gi, personaName)
+      .replace(/`?\{\{char\}\}`?|`?\[\[char\]\]`?|<char>/gi, characterName);
+  };
+
+  // Switch persona and automatically sync {{user}} tags in opening greeting message
+  const handleSwitchPersona = (newPersonaId: string) => {
+    setActivePersonaId(newPersonaId);
+    const newPersona = allPersonas.find(p => p.id === newPersonaId);
+    const newPersonaName = newPersona?.name || currentUser.displayName || 'User';
+
+    if (messages.length > 0 && (messages[0].sender === 'character' || messages[0].senderRole === 'assistant')) {
+      const firstMsg = messages[0];
+      const rawTemplate =
+        firstMsg.rawTemplate ||
+        currentScenario?.openingMessage ||
+        character.scenarios?.find(s => s.id === (conversation.scenarioId || activeScenarioId))?.openingMessage ||
+        character.firstMessage ||
+        character.scenarios?.[0]?.openingMessage ||
+        '';
+
+      let updatedContent = firstMsg.content;
+      if (
+        rawTemplate &&
+        (/`?\{\{user\}\}`?|`?\[\[user\]\]`?|<user>/i.test(rawTemplate) ||
+         rawTemplate.includes('{{user}}'))
+      ) {
+        updatedContent = formatTemplateWithPersonaAndChar(rawTemplate, newPersonaName, chatCharName);
+      } else {
+        // Fallback: replace former persona name with new persona name
+        const oldPersona = allPersonas.find(p => p.id === activePersonaId) || persona;
+        if (oldPersona?.name && oldPersona.name !== newPersonaName) {
+          const escapedOld = oldPersona.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          updatedContent = updatedContent.replace(new RegExp(`\\b${escapedOld}\\b`, 'g'), newPersonaName);
+        }
+      }
+
+      const updatedFirstMsg: ChatMessage = {
+        ...firstMsg,
+        content: updatedContent,
+        rawTemplate: rawTemplate || firstMsg.rawTemplate
+      };
+      const updatedMessages = [updatedFirstMsg, ...messages.slice(1)];
+      setMessages(updatedMessages);
+      onUpdateConversation({
+        ...conversation,
+        personaId: newPersonaId,
+        messages: updatedMessages
+      });
+      return;
+    }
+
+    onUpdateConversation({ ...conversation, personaId: newPersonaId });
+  };
+
+  // Switch scenario and optionally update greeting message
+  const handleSwitchScenario = (newScenarioId: string, forceUpdateGreeting = false) => {
+    setActiveScenarioId(newScenarioId);
+    const targetScenario = character.scenarios?.find(s => s.id === newScenarioId);
+    if (!targetScenario) return;
+
+    // If conversation only has 0 or 1 message (initial greeting), or forceUpdateGreeting is true:
+    // Update the initial message to the new scenario's opening message!
+    if (messages.length <= 1 || forceUpdateGreeting) {
+      const rawOpening = targetScenario.openingMessage || character.firstMessage || '';
+      const personaName = currentPersona?.name || currentUser.displayName || 'User';
+      const formattedOpening = formatTemplateWithPersonaAndChar(rawOpening, personaName, chatCharName);
+
+      const newFirstMsg: ChatMessage = {
+        id: messages[0]?.id || ('msg_start_' + conversation.id),
+        conversationId: conversation.id,
+        sender: 'character',
+        senderId: character.id,
+        senderRole: 'assistant',
+        content: formattedOpening,
+        rawTemplate: rawOpening,
+        timestamp: 'Today at ' + new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+      };
+
+      const updatedMessages = [newFirstMsg];
+      setMessages(updatedMessages);
+      onUpdateConversation({
+        ...conversation,
+        scenarioId: newScenarioId,
+        scenarioTitle: targetScenario.title,
+        messages: updatedMessages,
+        messageCount: 1
+      });
+    } else {
+      // If user has ongoing chat, update scenario reference for future AI context
+      onUpdateConversation({
+        ...conversation,
+        scenarioId: newScenarioId,
+        scenarioTitle: targetScenario.title
+      });
+    }
+  };
+
+  // Automatically sync persona if updated externally
+  useEffect(() => {
+    if (persona?.id && persona.id !== activePersonaId) {
+      handleSwitchPersona(persona.id);
+    }
+  }, [persona?.id]);
 
   const handleCopyMessage = (id: string, text: string) => {
     navigator.clipboard.writeText(text);
@@ -1894,7 +2008,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
           style={getFontFamilyStyle()}
         >
           <div className="relative z-10 space-y-4 max-w-4xl mx-auto">
-            {messages.map(msg => {
+            {messages.map((msg, index) => {
               const isUser = msg.sender === 'user' || msg.senderRole === 'user';
               // Resolve active persona for user messages: prefer persona saved on message, then active currentPersona
               const msgPersona = msg.personaId ? allPersonas.find(p => p.id === msg.personaId) : null;
@@ -2049,14 +2163,59 @@ export const ChatView: React.FC<ChatViewProps> = ({
                         className={`${fontSizeClass} leading-relaxed mt-1 whitespace-pre-wrap selection:bg-purple-600/40`}
                       >
                         {(() => {
+                          const isFirstBotMsg = !isUser && index === 0;
+                          const rawGreetingContent = (isFirstBotMsg && msg.rawTemplate)
+                            ? formatTemplateWithPersonaAndChar(
+                                msg.rawTemplate,
+                                effectivePersona?.name || currentUser.displayName || 'User',
+                                chatCharName
+                              )
+                            : msg.content;
                           const parsed = !isUser
-                            ? extractThoughtAndContent(msg.content, msg.thought)
+                            ? extractThoughtAndContent(rawGreetingContent, msg.thought)
                             : { thought: undefined, content: msg.content };
                           const hasThought = Boolean(parsed.thought);
                           const isThoughtOpen = openThoughtMsgIds[msg.id];
 
                           return (
                             <>
+                              {/* Alternate Greetings / Scenarios Switcher on initial greeting */}
+                              {isFirstBotMsg && character.scenarios && character.scenarios.length > 1 && (
+                                <div className="mb-3 flex items-center gap-1.5 p-1 px-2.5 rounded-xl bg-[#141824]/90 border border-purple-500/30 w-fit select-none shadow-sm">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const curIdx = character.scenarios.findIndex(s => s.id === activeScenarioId);
+                                      const prevIdx = curIdx <= 0 ? character.scenarios.length - 1 : curIdx - 1;
+                                      handleSwitchScenario(character.scenarios[prevIdx].id, messages.length <= 1);
+                                    }}
+                                    className="p-1 rounded-lg hover:bg-purple-600/30 text-purple-300 hover:text-white transition-colors cursor-pointer active:scale-90"
+                                    title="Previous Scenario / Greeting"
+                                  >
+                                    <ChevronLeft className="w-3.5 h-3.5" />
+                                  </button>
+                                  <div className="flex items-center gap-1.5 text-xs">
+                                    <span className="font-bold text-purple-300">
+                                      Greeting {(character.scenarios.findIndex(s => s.id === activeScenarioId) + 1) || 1}/{character.scenarios.length}
+                                    </span>
+                                    <span className="text-neutral-400 text-[11px] truncate max-w-[120px] xs:max-w-[180px] sm:max-w-xs">
+                                      · {currentScenario?.title || 'Initial Encounter'}
+                                    </span>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const curIdx = character.scenarios.findIndex(s => s.id === activeScenarioId);
+                                      const nextIdx = (curIdx + 1) % character.scenarios.length;
+                                      handleSwitchScenario(character.scenarios[nextIdx].id, messages.length <= 1);
+                                    }}
+                                    className="p-1 rounded-lg hover:bg-purple-600/30 text-purple-300 hover:text-white transition-colors cursor-pointer active:scale-90"
+                                    title="Next Scenario / Greeting"
+                                  >
+                                    <ChevronRight className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              )}
                               {hasThought && (
                                 <div className="mb-2">
                                   <button
@@ -2317,8 +2476,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                             key={p.id}
                             type="button"
                             onClick={() => {
-                              setActivePersonaId(p.id);
-                              onUpdateConversation({ ...conversation, personaId: p.id });
+                              handleSwitchPersona(p.id);
                               setIsPersonaQuickOpen(false);
                             }}
                             className={`w-full flex items-center gap-2.5 p-2 rounded-xl text-left transition-all cursor-pointer ${
@@ -2721,8 +2879,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                   <CustomSelect
                     value={activePersonaId}
                     onChange={newId => {
-                      setActivePersonaId(newId);
-                      onUpdateConversation({ ...conversation, personaId: newId });
+                      handleSwitchPersona(newId);
                     }}
                     options={allPersonas.map(p => ({
                       value: p.id,
@@ -2738,14 +2895,25 @@ export const ChatView: React.FC<ChatViewProps> = ({
                   <label className="text-neutral-400 font-semibold block mb-1.5 text-xs">Active Scenario</label>
                   <CustomSelect
                     value={activeScenarioId}
-                    onChange={newId => setActiveScenarioId(newId)}
-                    options={character.scenarios.map(sc => ({
+                    onChange={newId => handleSwitchScenario(newId, messages.length <= 1)}
+                    options={(character.scenarios || []).map(sc => ({
                       value: sc.id,
                       label: sc.title,
                       description: sc.description ? sc.description.slice(0, 50) + (sc.description.length > 50 ? '...' : '') : undefined
                     }))}
                     className="bg-[#131620] border-[#202534]"
                   />
+                  {messages.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => handleSwitchScenario(activeScenarioId, true)}
+                      className="mt-2 w-full py-2 px-3 rounded-xl bg-purple-600/20 hover:bg-purple-600/35 border border-purple-500/35 text-purple-200 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95"
+                      title="Reset current conversation to this scenario's opening greeting"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5 text-purple-400" />
+                      <span>Reset Chat to This Scenario Greeting</span>
+                    </button>
+                  )}
                 </div>
 
                 {/* Interactive Token & Price Counter Card */}
